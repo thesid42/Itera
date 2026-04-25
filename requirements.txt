@@ -1,0 +1,5 @@
+anthropic>=0.25.0
+textual>=0.52.0
+rich>=13.7.0
+pydantic>=2.5.0
+opentrons>=7.3.0
