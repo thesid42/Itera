@@ -22,6 +22,10 @@ import logging
 import os
 import re
 from typing import Optional
+
+from dotenv import load_dotenv
+load_dotenv()  # load PROTOCOLS_IO_TOKEN from .env if present
+
 import httpx
 
 logger = logging.getLogger(__name__)
@@ -47,29 +51,44 @@ def _search(query: str, page_size: int = 5) -> list[dict]:
     """
     GET /protocols — returns a list of protocol summary dicts.
     Fields used: title, description, doi, uri, keywords.
+
+    protocols.io v4 requires `filter[]` as an array param (not `filter=`).
+    We pass it via a list of tuples so httpx serialises it correctly:
+      ?filter[]=public&query=...
     """
-    params = {
-        "query": query,
-        "order_field": "relevance",
-        "order_dir": "desc",
-        "page_size": page_size,
-        "filter": "public",  # only publicly accessible protocols
-    }
+    # Build as list of tuples — httpx preserves duplicate keys for array params
+    params = [
+        ("query", query),
+        ("order_field", "relevance"),
+        ("order_dir", "desc"),
+        ("page_size", page_size),
+        ("filter[]", "public"),
+    ]
     try:
         with httpx.Client(timeout=_TIMEOUT) as client:
             resp = client.get(f"{_BASE}/protocols", headers=_headers(), params=params)
-        resp.raise_for_status()
+        if not resp.is_success:
+            body = resp.text[:400]
+            # protocols.io returns 400 with status_code 1218 for bad/expired tokens
+            if "1218" in body:
+                logger.warning(
+                    "protocols.io auth failed — PROTOCOLS_IO_TOKEN is invalid or expired. "
+                    "Get a fresh token at https://www.protocols.io/developers"
+                )
+            else:
+                logger.warning(
+                    "protocols.io search HTTP %d for query=%r | body: %s",
+                    resp.status_code, query, body,
+                )
+            return []
         data = resp.json()
         items = data.get("items", [])
         logger.info(
             "protocols.io search | query=%r | returned %d result(s)", query, len(items)
         )
         return items
-    except httpx.HTTPStatusError as exc:
-        logger.warning(
-            "protocols.io search HTTP %d for query=%r: %s",
-            exc.response.status_code, query, exc,
-        )
+    except httpx.TimeoutException:
+        logger.warning("protocols.io search timed out after %ds for query=%r", _TIMEOUT, query)
         return []
     except Exception as exc:
         logger.warning("protocols.io search failed for query=%r: %s", query, exc)
