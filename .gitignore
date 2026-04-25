@@ -41,3 +41,6 @@ htmlcov/
 *.swp
 *.swo
 *.tmp
+
+# Generated protocol output files — keep the folder but not the .py files
+outputs/*.py

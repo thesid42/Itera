@@ -37,3 +37,9 @@ pricing:
 rag:
   protocols_io_max: 3         # protocols.io: protocols to inject per query
   protocols_io_detail_max: 2  # protocols.io: how many to fetch full steps/materials for
+
+outputs:
+  # Directory (relative to project root) where verified robot-ready .py files are saved.
+  # Created automatically on first run. Never stored in /tmp.
+  # File naming: itera_<strategy>_<YYYYMMDD_HHMMSS>.py
+  directory: outputs

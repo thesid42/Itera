@@ -6,6 +6,8 @@ Three-pane Textual dashboard:
   Bottom-right: Live simulation log + diff viewer
 """
 import asyncio
+import os
+from datetime import datetime
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Container, Horizontal, Vertical
@@ -415,11 +417,17 @@ class IteraApp(App):
             for flag in c.failure_risk.flags:
                 sim.write(f"  [red]⚠[/] {flag}\n")
 
-        output_path = f"/tmp/itera_{strategy.name.replace(' ', '_').lower()}.py"
+        # Save output file to persistent outputs/ directory next to main.py
+        outputs_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "outputs")
+        os.makedirs(outputs_dir, exist_ok=True)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        safe_name = strategy.name.replace(" ", "_").lower()
+        filename = f"itera_{safe_name}_{timestamp}.py"
+        output_path = os.path.join(outputs_dir, filename)
         with open(output_path, "w") as f:
             f.write(result.final_code)
 
-        chat.write(f"\n[bold green]✓ Protocol saved:[/] [cyan]{output_path}[/]\n")
+        chat.write(f"\n[bold green]✓ Protocol saved:[/] [cyan]outputs/{filename}[/]\n")
         chat.write(
             f"[dim]Attempts: {result.total_attempts} | "
             f"Total cost: ${c.total_estimated_usd:.2f}[/]\n"
