@@ -1,22 +1,38 @@
 llm:
   # OpenRouter model — change to any model at https://openrouter.ai/models
-  # "qwen/qwen3-235b-a22b" is Qwen3 235B A22B (Qwen 3 Plus flagship MoE)
   model: qwen/qwen3.6-plus
   base_url: https://openrouter.ai/api/v1
   max_tokens:
     marketplace: 2000
     compiler: 3000
 
+# ── Pricing baselines ───────────────────────────────────────────────────────
+# These are CALIBRATED ANCHOR RATES from real supplier catalogs (April 2026).
+# They serve as the floor/fallback when no protocols.io materials are fetched,
+# AND as sanity-check caps for the LLM dynamic pricing estimator.
+#
+# The dynamic pricing engine (utils/dynamic_pricing.py) will override these
+# per-protocol after the RAG lookup runs. Only edit these if you have a
+# specific institution discount or custom cloud lab contract rate.
+#
+# Sources:
+#   Tips:         Opentrons.com — $850 / 9600-tip case = $0.089/tip
+#   Enzyme:       NEB Q5 PCR Master Mix 2× (NEB #M0492) ~$0.09/µL
+#   Antibody:     Abcam / R&D Systems research-grade primary Ab ~$0.25/µL
+#   Buffers:      PBS/Tris/saline bulk — $0.001/µL
+#   Machine time: Amortized OT-2 + cloud lab operator overhead ~$0.30/min
 pricing:
   tips:
-    standard_200ul: 0.18   # USD per 200µL tip
-    large_1000ul: 0.35     # USD per 1000µL tip
+    standard_200ul: 0.089   # USD per 200/300µL Opentrons tip (verified: $850/9600)
+    filtered_200ul: 0.13    # USD per filtered 200µL tip (premium)
+    large_1000ul:   0.18    # USD per 1000µL tip (smaller pack, higher unit cost)
   reagents:
-    enzyme: 0.08           # USD per µL (polymerases, ligases, kinases)
-    antibody: 0.12         # USD per µL
-    buffer: 0.001          # USD per µL (PBS, Tris, saline)
-    default: 0.004         # USD per µL (general reagents)
-  machine_time_per_min: 0.35  # USD per minute of robot time
+    # These are starting anchors — the LLM estimator will refine per protocol
+    enzyme:   0.09    # USD/µL — NEB Q5 PCR master mix benchmark
+    antibody: 0.25    # USD/µL — research-grade primary antibody (conservative)
+    buffer:   0.001   # USD/µL — PBS, Tris, saline bulk solutions
+    default:  0.005   # USD/µL — general reagents (fallback)
+  machine_time_per_min: 0.30  # USD/min — amortized OT-2 + cloud overhead
 
 rag:
   protocols_io_max: 3         # protocols.io: protocols to inject per query
