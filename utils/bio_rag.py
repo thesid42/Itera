@@ -53,28 +53,11 @@ def _score(query_tokens: set, entry: dict) -> float:
     return overlap / (len(query_tokens) + 1)
 
 
-def retrieve_context(
-    goal: str,
-    top_k: Optional[int] = None,
-    min_score: Optional[float] = None,
-) -> str:
-    """
-    Given a lab goal string, return a formatted string of relevant protocol
-    constraints to inject into the marketplace LLM system prompt.
-
-    Returns an empty string if no relevant protocols are found.
-    """
-    cfg = get_rag_config()
-    if top_k is None:
-        top_k = cfg["top_k"]
-    if min_score is None:
-        min_score = cfg["min_score"]
-
-    logger.info("RAG retrieval | goal=%r | top_k=%d | min_score=%.2f", goal, top_k, min_score)
-
+def _retrieve_local(goal: str, top_k: int, min_score: float) -> str:
+    """Query the local knowledge base and return formatted context."""
     kb = _load_knowledge_base()
     query_tokens = _tokenize(goal)
-    logger.debug("Query tokens: %s", query_tokens)
+    logger.debug("RAG local | query tokens: %s", query_tokens)
 
     scored = sorted(
         [(s, e) for e in kb if (s := _score(query_tokens, e)) >= min_score],
@@ -83,11 +66,11 @@ def retrieve_context(
     )[:top_k]
 
     if not scored:
-        logger.info("RAG retrieval | no matching protocols found for goal=%r", goal)
+        logger.info("RAG local | no matches for goal=%r", goal)
         return ""
 
     logger.info(
-        "RAG retrieval | matched %d protocol(s): %s",
+        "RAG local | matched %d protocol(s): %s",
         len(scored),
         [e["name"] for _, e in scored],
     )
@@ -104,5 +87,54 @@ def retrieve_context(
             f"  Recommended labware: {labware}\n"
             f"  Cost note: {cost_note}"
         )
-
     return "\n\n".join(parts)
+
+
+def retrieve_context(
+    goal: str,
+    top_k: Optional[int] = None,
+    min_score: Optional[float] = None,
+) -> str:
+    """
+    Return a formatted string of relevant protocol context to inject into
+    the marketplace LLM system prompt.
+
+    Sources (both are queried and merged):
+      1. Local knowledge base  (knowledge/bio_protocols.json) — always available,
+         zero latency, keyword-matched.
+      2. protocols.io live API — fetches published community protocols when
+         PROTOCOLS_IO_TOKEN is set; degrades gracefully if absent or offline.
+
+    Returns an empty string if neither source finds anything relevant.
+    """
+    cfg = get_rag_config()
+    if top_k is None:
+        top_k = cfg["top_k"]
+    if min_score is None:
+        min_score = cfg["min_score"]
+
+    logger.info("RAG retrieval | goal=%r | top_k=%d | min_score=%.2f", goal, top_k, min_score)
+
+    # Source 1: local KB
+    local_ctx = _retrieve_local(goal, top_k, min_score)
+
+    # Source 2: protocols.io live fetch
+    from utils.protocols_io import search_protocols
+    live_ctx = search_protocols(goal, max_results=cfg.get("protocols_io_max", 2))
+
+    sections: list[str] = []
+    if local_ctx:
+        sections.append("── Local protocol knowledge ──\n" + local_ctx)
+    if live_ctx:
+        sections.append("── Live protocols from protocols.io ──\n" + live_ctx)
+
+    if not sections:
+        logger.info("RAG retrieval | no context found from any source for goal=%r", goal)
+        return ""
+
+    combined = "\n\n".join(sections)
+    logger.info(
+        "RAG retrieval | combined context: %d chars (local=%d, live=%d)",
+        len(combined), len(local_ctx), len(live_ctx),
+    )
+    return combined

@@ -33,8 +33,9 @@ htmlcov/
 # Logs
 *.log
 
-# Environment / secrets
+# Environment / secrets — keep .env.example in version control
 .env
+!.env.example
 
 # OS / temp
 *.swp
