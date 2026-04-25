@@ -3,8 +3,8 @@ Engine 1 — Marketplace Engine
 Takes a natural language lab goal and returns 3 cost-optimized strategies as JSON.
 
 Enhancements over base version:
-  1. Bio Knowledge RAG: queries knowledge/bio_protocols.json before the LLM call
-     so strategies are grounded in real lab protocol constraints.
+  1. Bio Knowledge RAG: queries protocols.io before the LLM call so strategies
+     are grounded in real published protocols (when token is available).
   2. Cost Model from config: all pricing rates loaded from config.yaml so
      lab managers can update rates without touching code.
   3. LLM backend: OpenRouter (Qwen3) via utils/openrouter_client.py.
@@ -82,7 +82,7 @@ def run_marketplace(goal: str, on_token=None) -> MarketplaceResult:
     Generate 3 cost-optimized strategies for the given lab goal.
 
     Steps:
-      1. RAG lookup — retrieve biological protocol constraints from local KB
+      1. RAG lookup — retrieve biological protocol context from protocols.io
       2. Build system prompt with live pricing from config.yaml
       3. Stream LLM response via OpenRouter (Qwen3)
       4. Parse JSON and return validated MarketplaceResult

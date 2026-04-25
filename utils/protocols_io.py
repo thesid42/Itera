@@ -21,6 +21,7 @@ Flow
 import logging
 import os
 import re
+from dataclasses import dataclass
 from typing import Optional
 
 from dotenv import load_dotenv
@@ -45,6 +46,73 @@ def _strip_html(text: str) -> str:
     """Remove HTML tags and collapse whitespace."""
     clean = re.sub(r"<[^>]+>", " ", text or "")
     return re.sub(r"\s+", " ", clean).strip()
+
+
+def _tokenize(text: str) -> set[str]:
+    return set(re.findall(r"\b[a-z]{2,}\b", (text or "").lower()))
+
+
+def _score_query_against_item(query: str, item: dict) -> float:
+    """
+    Lightweight ranking to compensate for API ordering quirks.
+    Higher is better. Pure lexical overlap (no ML deps).
+    """
+    q = _tokenize(query)
+    if not q:
+        return 0.0
+
+    title = _strip_html(item.get("title", ""))
+    desc = _strip_html(item.get("description", "") or item.get("plain_description", ""))
+    kw = item.get("keywords", [])
+    if isinstance(kw, list):
+        kw_text = " ".join(k if isinstance(k, str) else (k.get("name", "") or "") for k in kw)
+    else:
+        kw_text = ""
+
+    # Weight title + keywords higher than description
+    doc = f"{title} {title} {kw_text} {kw_text} {desc}"
+    d = _tokenize(doc)
+    overlap = len(q & d)
+    return overlap / (len(q) + 1)
+
+
+@dataclass(frozen=True)
+class RetrievedProtocol:
+    id: int
+    title: str
+    doi: str
+    uri: str
+    score: float
+    summary: str
+    steps: list[str]
+    materials: list[str]
+
+
+def _extract_steps(detail: dict, max_steps: int = 10) -> list[str]:
+    steps = detail.get("steps", []) or []
+    extracted: list[str] = []
+    for step in steps:
+        raw = step.get("description", "") or ""
+        for comp in step.get("components", []) or []:
+            raw += " " + (comp.get("description", "") or "")
+        text = _strip_html(raw)
+        if text:
+            extracted.append(text[:350])
+        if len(extracted) >= max_steps:
+            break
+    return extracted
+
+
+def _extract_materials(detail: dict, max_items: int = 12) -> list[str]:
+    reagents = detail.get("reagents", []) or detail.get("materials", []) or []
+    names: list[str] = []
+    for r in reagents:
+        name = (r.get("name", "") or r.get("title", "") or "").strip()
+        if name:
+            names.append(_strip_html(name)[:120])
+        if len(names) >= max_items:
+            break
+    return names
 
 
 def _search(query: str, page_size: int = 5) -> list[dict]:
@@ -167,6 +235,99 @@ def _format_summary(item: dict, include_steps: bool = False) -> str:
 
 # ── Public API ────────────────────────────────────────────────────────────────
 
+def retrieve_protocols(
+    query: str,
+    *,
+    max_results: int = 3,
+    detail_results: int = 2,
+) -> list[RetrievedProtocol]:
+    """
+    Retrieve and rank protocols for a query, returning structured results.
+    """
+    token = os.environ.get("PROTOCOLS_IO_TOKEN", "")
+    if not token:
+        logger.info("PROTOCOLS_IO_TOKEN not set — skipping live protocol fetch")
+        return []
+
+    # Pull extra results then apply our own scoring + de-dupe.
+    items = _search(query, page_size=max(10, max_results * 5))
+    if not items:
+        return []
+
+    # De-dupe by id
+    by_id: dict[int, dict] = {}
+    for it in items:
+        pid = it.get("id")
+        if isinstance(pid, int) and pid not in by_id:
+            by_id[pid] = it
+
+    ranked = sorted(
+        by_id.values(),
+        key=lambda it: _score_query_against_item(query, it),
+        reverse=True,
+    )[:max_results]
+
+    results: list[RetrievedProtocol] = []
+    for idx, it in enumerate(ranked):
+        pid = it.get("id")
+        if not isinstance(pid, int):
+            continue
+
+        score = _score_query_against_item(query, it)
+        title = _strip_html(it.get("title", "Untitled protocol"))
+        doi = str(it.get("doi", "") or "")
+        uri = str(it.get("uri", "") or it.get("url", "") or "")
+        summary = _strip_html(it.get("description", "") or it.get("plain_description", ""))[:500]
+
+        steps: list[str] = []
+        materials: list[str] = []
+
+        if idx < max(0, detail_results):
+            detail = _fetch_detail(pid)
+            if detail:
+                payload = detail.get("payload", detail)
+                steps = _extract_steps(payload)
+                materials = _extract_materials(payload)
+
+        results.append(
+            RetrievedProtocol(
+                id=pid,
+                title=title,
+                doi=doi,
+                uri=uri,
+                score=score,
+                summary=summary,
+                steps=steps,
+                materials=materials,
+            )
+        )
+
+    return results
+
+
+def format_protocols_for_rag(protocols: list[RetrievedProtocol]) -> str:
+    """
+    Format retrieved protocols into a compact context block for LLM injection.
+    """
+    parts: list[str] = []
+    for p in protocols:
+        lines: list[str] = [f"[protocols.io — {p.title}] (score={p.score:.2f})"]
+        if p.doi:
+            lines.append(f"  DOI: {p.doi}")
+        if p.uri:
+            lines.append(f"  URL: {p.uri}")
+        if p.summary:
+            lines.append(f"  Summary: {p.summary}")
+        if p.steps:
+            lines.append("  Key steps:")
+            for s in p.steps[:8]:
+                lines.append(f"    - {s}")
+        if p.materials:
+            lines.append(f"  Materials: {', '.join(p.materials[:10])}")
+        parts.append("\n".join(lines))
+    return "\n\n".join(parts).strip()
+
+
 def search_protocols(query: str, max_results: int = 3) -> str:
     """
     Search protocols.io for protocols relevant to the given query string.
@@ -175,40 +336,14 @@ def search_protocols(query: str, max_results: int = 3) -> str:
     context, or an empty string if the token is missing / API is down.
 
     Strategy:
-      - Search for up to max_results protocols.
-      - Fetch full detail (steps + reagents) for the top hit only.
-      - Format the top hit with full detail; remainder as summaries.
+      - Retrieve and re-rank protocols.
+      - Fetch full detail (steps + materials) for the top few results.
+      - Format to a compact context string for LLM injection.
     """
-    token = os.environ.get("PROTOCOLS_IO_TOKEN", "")
-    if not token:
-        logger.info("PROTOCOLS_IO_TOKEN not set — skipping live protocol fetch")
+    logger.info("protocols.io | retrieving for query=%r (max=%d)", query, max_results)
+    prots = retrieve_protocols(query, max_results=max_results, detail_results=min(2, max_results))
+    if not prots:
         return ""
-
-    logger.info("protocols.io | searching for query=%r (max=%d)", query, max_results)
-    items = _search(query, page_size=max_results + 2)  # fetch a few extra; filter below
-    if not items:
-        return ""
-
-    items = items[:max_results]
-    parts: list[str] = []
-
-    for i, item in enumerate(items):
-        if i == 0 and item.get("id"):
-            # Fetch full detail for the best match
-            logger.debug("protocols.io | fetching full detail for top result id=%r", item["id"])
-            detail = _fetch_detail(item["id"])
-            if detail:
-                # The detail endpoint may wrap the payload
-                payload = detail.get("payload", detail)
-                parts.append(_format_summary(payload, include_steps=True))
-            else:
-                parts.append(_format_summary(item, include_steps=False))
-        else:
-            parts.append(_format_summary(item, include_steps=False))
-
-    result = "\n\n".join(parts)
-    logger.info(
-        "protocols.io | formatted %d protocol(s) | %d chars of context",
-        len(parts), len(result),
-    )
-    return result
+    formatted = format_protocols_for_rag(prots)
+    logger.info("protocols.io | formatted %d protocol(s) | %d chars", len(prots), len(formatted))
+    return formatted

@@ -19,6 +19,5 @@ pricing:
   machine_time_per_min: 0.35  # USD per minute of robot time
 
 rag:
-  top_k: 3              # Local KB: number of protocol docs to retrieve
-  min_score: 0.05       # Local KB: minimum keyword-overlap score to include
-  protocols_io_max: 2   # protocols.io: max live protocols to fetch per query
+  protocols_io_max: 3         # protocols.io: protocols to inject per query
+  protocols_io_detail_max: 2  # protocols.io: how many to fetch full steps/materials for
