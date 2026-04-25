@@ -10,6 +10,7 @@ Workflow:
 5. Compute unified diff between attempts for the TUI
 6. Run final cost analysis on the verified code
 """
+import logging
 import subprocess
 import tempfile
 import os
@@ -18,10 +19,12 @@ from utils.models import CompilerResult, SimulationAttempt, IterationResult
 from utils.cost_analyzer import analyze_cost
 from engines.compiler import compile_strategy
 
+logger = logging.getLogger(__name__)
+
 MAX_ATTEMPTS = 5
 
 
-def _run_simulator(code: str) -> tuple[bool, str]:
+def _run_simulator(code: str) -> tuple:
     """
     Write code to a temp file and run opentrons_simulate.
     Returns (passed: bool, stderr: str).
@@ -32,6 +35,8 @@ def _run_simulator(code: str) -> tuple[bool, str]:
         f.write(code)
         tmp_path = f.name
 
+    logger.debug("Simulator | wrote %d lines to %s", len(code.splitlines()), tmp_path)
+
     try:
         result = subprocess.run(
             ["opentrons_simulate", tmp_path],
@@ -40,13 +45,16 @@ def _run_simulator(code: str) -> tuple[bool, str]:
             timeout=60,
         )
         stderr = result.stderr.strip()
-        # opentrons_simulate exits 0 on success; non-empty stderr = error
         passed = result.returncode == 0 and len(stderr) == 0
+        logger.info("Simulator | opentrons_simulate | returncode=%d | passed=%s", result.returncode, passed)
+        if stderr:
+            logger.warning("Simulator | stderr:\n%s", stderr)
         return passed, stderr
     except FileNotFoundError:
-        # opentrons_simulate not installed — use dry-run mode
+        logger.info("Simulator | opentrons_simulate not found — falling back to dry-run static analysis")
         return _dry_run_simulate(code)
     except subprocess.TimeoutExpired:
+        logger.error("Simulator | timed out after 60 seconds")
         return False, "Simulation timed out after 60 seconds"
     finally:
         try:
@@ -55,11 +63,12 @@ def _run_simulator(code: str) -> tuple[bool, str]:
             pass
 
 
-def _dry_run_simulate(code: str) -> tuple[bool, str]:
+def _dry_run_simulate(code: str) -> tuple:
     """
     Fallback when opentrons_simulate is not installed.
     Performs static analysis checks on the code.
     """
+    logger.debug("Dry-run | starting static analysis checks")
     errors = []
 
     # Check 1: Valid Python syntax
@@ -101,7 +110,9 @@ def _dry_run_simulate(code: str) -> tuple[bool, str]:
         seen_slots[slot] = True
 
     if errors:
+        logger.warning("Dry-run | %d check(s) failed:\n%s", len(errors), "\n".join(errors))
         return False, "\n".join(errors)
+    logger.info("Dry-run | all static checks passed")
     return True, ""
 
 
@@ -128,11 +139,15 @@ def run_iteration(
     on_attempt: callback(SimulationAttempt) — called after each sim run for TUI updates
     on_token: callback(str) — called during LLM recompilation for streaming display
     """
+    strategy_name = compiler_result.strategy.name
+    logger.info("Iteration | starting | strategy=%r | max_attempts=%d", strategy_name, MAX_ATTEMPTS)
+
     attempts: list[SimulationAttempt] = []
     current_code = compiler_result.python_code
     previous_code = ""
 
     for attempt_num in range(1, MAX_ATTEMPTS + 1):
+        logger.info("Iteration | attempt %d/%d | strategy=%r", attempt_num, MAX_ATTEMPTS, strategy_name)
         passed, stderr = _run_simulator(current_code)
 
         diff = _compute_diff(previous_code, current_code) if previous_code else ""
@@ -150,8 +165,11 @@ def run_iteration(
             on_attempt(sim_attempt)
 
         if passed:
-            # Success — analyze cost on verified code
+            logger.info("Iteration | PASSED on attempt %d | strategy=%r", attempt_num, strategy_name)
             final_cost = analyze_cost(current_code)
+            logger.info("Iteration | final cost $%.2f | tips=%d | reagents=%.0fµL | machine=%.1fmin",
+                        final_cost.total_estimated_usd, final_cost.tips.count,
+                        final_cost.reagents.total_ul, final_cost.machine_time.minutes)
             return IterationResult(
                 final_code=current_code,
                 attempts=attempts,
@@ -160,10 +178,14 @@ def run_iteration(
                 cost=final_cost,
             )
 
+        logger.warning("Iteration | attempt %d FAILED | strategy=%r | error=%r",
+                       attempt_num, strategy_name, stderr[:200])
+
         if attempt_num == MAX_ATTEMPTS:
             break
 
         # Failed — recompile with error context
+        logger.info("Iteration | triggering re-compilation for attempt %d", attempt_num + 1)
         previous_code = current_code
         fixed = compile_strategy(
             strategy=compiler_result.strategy,
@@ -174,7 +196,7 @@ def run_iteration(
         )
         current_code = fixed.python_code
 
-    # Exhausted attempts — return best effort
+    logger.error("Iteration | EXHAUSTED all %d attempts | strategy=%r | returning best effort", MAX_ATTEMPTS, strategy_name)
     final_cost = analyze_cost(current_code)
     return IterationResult(
         final_code=current_code,

@@ -3,11 +3,15 @@ Engine 2 — Compiler Engine
 Translates a chosen Strategy into raw Opentrons API v2 Python code.
 Uses few-shot examples in the system prompt to minimize hallucinations.
 Supports iterative re-compilation when fed simulator error logs.
-"""
-from anthropic import Anthropic
-from utils.models import Strategy, CompilerResult
 
-client = Anthropic()
+LLM backend: OpenRouter (Qwen3) via utils/openrouter_client.py.
+"""
+import logging
+from utils.models import Strategy, CompilerResult
+from utils.config_loader import get_llm_config
+from utils.openrouter_client import stream_response
+
+logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = """You are IteraCompiler, an expert Opentrons Python API v2 code generator.
 
@@ -94,47 +98,43 @@ def compile_strategy(
     the LLM sees the broken code + the simulator error and must fix it.
     """
     if error_log and previous_code:
-        user_message = f"""The following Opentrons v2 code has a simulation error.
-Fix ONLY the error. Output corrected Python code only — no explanation.
-
-ERROR FROM SIMULATOR:
-{error_log.strip()}
-
-BROKEN CODE:
-{previous_code.strip()}
-"""
+        logger.info("Compiler | attempt=%d | re-compilation with error context | strategy=%r", attempt, strategy.name)
+        logger.debug("Compiler | error_log: %s", error_log[:300])
+        user_message = (
+            "The following Opentrons v2 code has a simulation error.\n"
+            "Fix ONLY the error. Output corrected Python code only — no explanation.\n\n"
+            f"ERROR FROM SIMULATOR:\n{error_log.strip()}\n\n"
+            f"BROKEN CODE:\n{previous_code.strip()}"
+        )
     else:
-        user_message = f"""Generate Opentrons API v2 Python code for this protocol strategy:
+        logger.info("Compiler | attempt=%d | fresh compilation | strategy=%r", attempt, strategy.name)
+        user_message = (
+            "Generate Opentrons API v2 Python code for this protocol strategy:\n\n"
+            f"Strategy name: {strategy.name}\n"
+            f"Description: {strategy.description}\n"
+            f"Labware to use: {strategy.labware}\n"
+            f"Estimated duration: {strategy.estimated_duration_min} minutes\n\n"
+            "Cost optimization targets:\n"
+            f"- Use at most {strategy.cost.tips.count} tips\n"
+            f"- Total reagent volume target: ~{strategy.cost.reagents.total_ul:.0f} µL\n"
+            "- Minimize idle robot time\n\n"
+            "Generate complete, runnable protocol code."
+        )
 
-Strategy name: {strategy.name}
-Description: {strategy.description}
-Labware to use: {strategy.labware}
-Estimated duration: {strategy.estimated_duration_min} minutes
-
-Cost optimization targets:
-- Use at most {strategy.cost.tips.count} tips
-- Total reagent volume target: ~{strategy.cost.reagents.total_ul:.0f} µL
-- Minimize idle robot time
-
-Generate complete, runnable protocol code.
-"""
-
-    code = ""
-    with client.messages.stream(
-        model="claude-sonnet-4-20250514",
-        max_tokens=3000,
-        system=SYSTEM_PROMPT,
+    cfg = get_llm_config()
+    code = stream_response(
+        system_prompt=SYSTEM_PROMPT,
         messages=[{"role": "user", "content": user_message}],
-    ) as stream:
-        for text in stream.text_stream:
-            code += text
-            if on_token:
-                on_token(text)
+        max_tokens=cfg["max_tokens"]["compiler"],
+        on_token=on_token,
+    )
 
-    # Strip markdown fences if LLM wrapped output
+    # Strip markdown fences if the model wrapped output despite instructions
     code = code.strip()
     if code.startswith("```"):
         lines = code.split("\n")
         code = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
 
-    return CompilerResult(strategy=strategy, python_code=code.strip(), attempt=attempt)
+    result = CompilerResult(strategy=strategy, python_code=code.strip(), attempt=attempt)
+    logger.info("Compiler | attempt=%d | generated %d lines of code", attempt, len(result.python_code.splitlines()))
+    return result

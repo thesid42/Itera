@@ -1,0 +1,23 @@
+llm:
+  # OpenRouter model — change to any model at https://openrouter.ai/models
+  # "qwen/qwen3-235b-a22b" is Qwen3 235B A22B (Qwen 3 Plus flagship MoE)
+  model: qwen/qwen3.6-plus
+  base_url: https://openrouter.ai/api/v1
+  max_tokens:
+    marketplace: 2000
+    compiler: 3000
+
+pricing:
+  tips:
+    standard_200ul: 0.18   # USD per 200µL tip
+    large_1000ul: 0.35     # USD per 1000µL tip
+  reagents:
+    enzyme: 0.08           # USD per µL (polymerases, ligases, kinases)
+    antibody: 0.12         # USD per µL
+    buffer: 0.001          # USD per µL (PBS, Tris, saline)
+    default: 0.004         # USD per µL (general reagents)
+  machine_time_per_min: 0.35  # USD per minute of robot time
+
+rag:
+  top_k: 3        # Number of protocol documents to retrieve
+  min_score: 0.05 # Minimum keyword-overlap score to include a result

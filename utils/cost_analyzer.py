@@ -7,18 +7,26 @@ Parses generated Opentrons Python code to extract real cost metrics:
   - failure risk flags (missing seals, tip reuse, edge-well patterns)
 """
 import ast
+import logging
 import re
 from utils.models import CostBreakdown, TipCost, ReagentCost, MachineTimeCost, FailureRisk
+from utils.config_loader import get_pricing
 
-# ─── Pricing constants (approximate cloud lab rates) ──────────────────────────
-TIP_COST_USD = 0.18           # per tip (standard 200µL)
-MACHINE_TIME_USD_PER_MIN = 0.35
-REAGENT_COST_PER_UL = {
-    "enzyme":    0.08,
-    "antibody":  0.12,
-    "buffer":    0.001,
-    "default":   0.004,
-}
+logger = logging.getLogger(__name__)
+
+
+def _pricing():
+    """Load current pricing from config.yaml (cached after first read)."""
+    p = get_pricing()
+    tip_cost = p["tips"]["standard_200ul"]
+    machine_rate = p["machine_time_per_min"]
+    reagent_rates = {
+        "enzyme":   p["reagents"]["enzyme"],
+        "antibody": p["reagents"]["antibody"],
+        "buffer":   p["reagents"]["buffer"],
+        "default":  p["reagents"]["default"],
+    }
+    return tip_cost, machine_rate, reagent_rates
 
 
 def _classify_reagent(name: str) -> str:
@@ -46,9 +54,13 @@ def analyze_cost(python_code: str) -> CostBreakdown:
     Parse Opentrons Python code and return a populated CostBreakdown.
     Falls back gracefully if parsing fails.
     """
+    tip_cost_usd, machine_rate, reagent_rates = _pricing()
+    logger.debug("CostAnalyzer | rates: tip=$%.3f machine=$%.3f/min", tip_cost_usd, machine_rate)
+
     try:
         tree = ast.parse(python_code)
-    except SyntaxError:
+    except SyntaxError as exc:
+        logger.warning("CostAnalyzer | SyntaxError parsing code: %s", exc)
         return CostBreakdown()
 
     # Pre-pass: detect loop multiplier from range() in for-loops
@@ -67,9 +79,6 @@ def analyze_cost(python_code: str) -> CostBreakdown:
     reagent_usd = 0.0
     machine_seconds = 0.0
     risk_flags: list[str] = []
-
-    has_seal_before_long_delay = True
-    last_delay_seconds = 0.0
     has_seal_call = False
 
     for node in ast.walk(tree):
@@ -97,9 +106,7 @@ def analyze_cost(python_code: str) -> CostBreakdown:
                     vol = _parse_number(kw.value)
             total_ul += vol
 
-            # Try to infer reagent name from nearby variable assignment
-            reagent_type = "default"
-            reagent_usd += vol * REAGENT_COST_PER_UL[reagent_type]
+            reagent_usd += vol * reagent_rates["default"]
 
         # ── Delay / incubation time ───────────────────────────────────────────
         if func_name == "delay":
@@ -114,7 +121,6 @@ def analyze_cost(python_code: str) -> CostBreakdown:
                     mins = _parse_number(kw.value)
             total_secs = secs + mins * 60
             machine_seconds += total_secs
-            last_delay_seconds = total_secs
 
             # Flag long delays without plate seal
             if total_secs > 1800 and not has_seal_call:
@@ -160,13 +166,23 @@ def analyze_cost(python_code: str) -> CostBreakdown:
             risk_score = min(risk_score + 0.1, 1.0)
 
     machine_mins = machine_seconds / 60.0
-    machine_usd = round(machine_mins * MACHINE_TIME_USD_PER_MIN, 2)
+    machine_usd = round(machine_mins * machine_rate, 2)
 
     cost = CostBreakdown(
-        tips=TipCost(count=tip_count, usd=round(tip_count * TIP_COST_USD, 2)),
+        tips=TipCost(count=tip_count, usd=round(tip_count * tip_cost_usd, 2)),
         reagents=ReagentCost(total_ul=round(total_ul, 1), usd=round(reagent_usd, 2)),
         machine_time=MachineTimeCost(minutes=round(machine_mins, 1), usd=machine_usd),
         failure_risk=FailureRisk(score=round(risk_score, 2), flags=risk_flags),
     )
     cost.recalculate_total()
+    logger.info(
+        "CostAnalyzer | tips=%d ($%.2f) | reagents=%.0fµL ($%.2f) | machine=%.1fmin ($%.2f) | risk=%.0f%% | total=$%.2f",
+        cost.tips.count, cost.tips.usd,
+        cost.reagents.total_ul, cost.reagents.usd,
+        cost.machine_time.minutes, cost.machine_time.usd,
+        cost.failure_risk.score * 100,
+        cost.total_estimated_usd,
+    )
+    if cost.failure_risk.flags:
+        logger.warning("CostAnalyzer | risk flags: %s", cost.failure_risk.flags)
     return cost

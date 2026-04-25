@@ -1,4 +1,6 @@
-anthropic>=0.25.0
+openai>=1.30.0
+pyyaml>=6.0
+python-dotenv>=1.0.0
 textual>=0.52.0
 rich>=13.7.0
 pydantic>=2.5.0

@@ -33,6 +33,9 @@ htmlcov/
 # Logs
 *.log
 
+# Environment / secrets
+.env
+
 # OS / temp
 *.swp
 *.swo
