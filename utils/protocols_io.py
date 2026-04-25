@@ -52,6 +52,57 @@ def _tokenize(text: str) -> set[str]:
     return set(re.findall(r"\b[a-z]{2,}\b", (text or "").lower()))
 
 
+_STOPWORDS: set[str] = {
+    "a", "an", "and", "are", "as", "at", "be", "by", "do", "for", "from", "has",
+    "have", "how", "i", "in", "into", "is", "it", "min", "minutes", "ml", "of",
+    "on", "or", "plate", "run", "runtime", "then", "the", "to", "ul", "well",
+    "with", "x",
+}
+
+
+def _build_search_queries(goal: str) -> list[str]:
+    """
+    protocols.io search is closer to keyword search than full NL search.
+    Build a small cascade of shorter queries.
+    """
+    goal = (goal or "").strip()
+    if not goal:
+        return []
+
+    # 1) Original (sometimes works)
+    candidates: list[str] = [goal]
+
+    # 2) First clause / sentence-ish
+    first = re.split(r"[.;\n]", goal, maxsplit=1)[0].strip()
+    if first and first not in candidates:
+        candidates.append(first)
+
+    # 3) Keyword-compressed query (drop units + stopwords, keep order)
+    tokens_in_order = re.findall(r"\b[a-z]{2,}\b", goal.lower())
+    keywords: list[str] = []
+    for t in tokens_in_order:
+        if t in _STOPWORDS:
+            continue
+        if t.isdigit():
+            continue
+        if t not in keywords:
+            keywords.append(t)
+    if keywords:
+        candidates.append(" ".join(keywords[:8]))
+        candidates.append(" ".join(keywords[:5]))
+
+    # De-dupe + cap length (avoid sending huge strings)
+    seen: set[str] = set()
+    out: list[str] = []
+    for c in candidates:
+        c2 = re.sub(r"\s+", " ", c).strip()
+        if not c2 or c2 in seen:
+            continue
+        seen.add(c2)
+        out.append(c2[:120])
+    return out[:6]
+
+
 def _score_query_against_item(query: str, item: dict) -> float:
     """
     Lightweight ranking to compensate for API ordering quirks.
@@ -250,8 +301,16 @@ def retrieve_protocols(
         return []
 
     # Pull extra results then apply our own scoring + de-dupe.
-    items = _search(query, page_size=max(10, max_results * 5))
+    # Use a cascade of queries because the API behaves like keyword search.
+    items: list[dict] = []
+    used_query = query
+    for q in _build_search_queries(query):
+        used_query = q
+        items = _search(q, page_size=max(10, max_results * 6))
+        if items:
+            break
     if not items:
+        logger.info("protocols.io | no results for any query variant | original=%r", query)
         return []
 
     # De-dupe by id
@@ -263,7 +322,7 @@ def retrieve_protocols(
 
     ranked = sorted(
         by_id.values(),
-        key=lambda it: _score_query_against_item(query, it),
+        key=lambda it: _score_query_against_item(used_query, it),
         reverse=True,
     )[:max_results]
 
@@ -273,7 +332,7 @@ def retrieve_protocols(
         if not isinstance(pid, int):
             continue
 
-        score = _score_query_against_item(query, it)
+        score = _score_query_against_item(used_query, it)
         title = _strip_html(it.get("title", "Untitled protocol"))
         doi = str(it.get("doi", "") or "")
         uri = str(it.get("uri", "") or it.get("url", "") or "")
