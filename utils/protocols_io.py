@@ -30,7 +30,7 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-_BASE = "https://www.protocols.io/api/v4"
+_BASE = "https://www.protocols.io/api/v3"
 _TIMEOUT = 12  # seconds per request
 
 
@@ -52,18 +52,17 @@ def _search(query: str, page_size: int = 5) -> list[dict]:
     GET /protocols — returns a list of protocol summary dicts.
     Fields used: title, description, doi, uri, keywords.
 
-    protocols.io v4 requires `filter[]` as an array param (not `filter=`).
-    We pass it via a list of tuples so httpx serialises it correctly:
-      ?filter[]=public&query=...
+    protocols.io requires `filter` (string) for this endpoint; omitting it
+    yields HTTP 400 "filter is required".
+
+    For the current public REST API, the search term param is `key`.
     """
-    # Build as list of tuples — httpx preserves duplicate keys for array params
-    params = [
-        ("query", query),
-        ("order_field", "relevance"),
-        ("order_dir", "desc"),
-        ("page_size", page_size),
-        ("filter[]", "public"),
-    ]
+    params = {
+        "filter": "public",
+        "key": query,
+        "page_size": page_size,
+        "page_id": 1,
+    }
     try:
         with httpx.Client(timeout=_TIMEOUT) as client:
             resp = client.get(f"{_BASE}/protocols", headers=_headers(), params=params)
@@ -95,24 +94,22 @@ def _search(query: str, page_size: int = 5) -> list[dict]:
         return []
 
 
-def _fetch_detail(doi: str) -> Optional[dict]:
+def _fetch_detail(protocol_id: str | int) -> Optional[dict]:
     """
-    GET /protocols/{doi} — returns the full protocol object including steps
-    and reagents.  Called only for the single top search result.
+    GET /protocols/{id} — returns the full protocol object including steps
+    and reagents. Called only for the single top search result.
     """
-    if not doi:
+    if not protocol_id:
         return None
-    # URL-encode the doi for safe path usage
-    safe_doi = doi.replace("/", "%2F")
     try:
         with httpx.Client(timeout=_TIMEOUT) as client:
-            resp = client.get(f"{_BASE}/protocols/{safe_doi}", headers=_headers())
+            resp = client.get(f"{_BASE}/protocols/{protocol_id}", headers=_headers())
         resp.raise_for_status()
         detail = resp.json()
-        logger.debug("protocols.io detail fetched for doi=%r", doi)
+        logger.debug("protocols.io detail fetched for id=%r", protocol_id)
         return detail
     except Exception as exc:
-        logger.warning("protocols.io detail fetch failed for doi=%r: %s", doi, exc)
+        logger.warning("protocols.io detail fetch failed for id=%r: %s", protocol_id, exc)
         return None
 
 
@@ -196,10 +193,10 @@ def search_protocols(query: str, max_results: int = 3) -> str:
     parts: list[str] = []
 
     for i, item in enumerate(items):
-        if i == 0 and item.get("doi"):
+        if i == 0 and item.get("id"):
             # Fetch full detail for the best match
-            logger.debug("protocols.io | fetching full detail for top result doi=%r", item["doi"])
-            detail = _fetch_detail(item["doi"])
+            logger.debug("protocols.io | fetching full detail for top result id=%r", item["id"])
+            detail = _fetch_detail(item["id"])
             if detail:
                 # The detail endpoint may wrap the payload
                 payload = detail.get("payload", detail)
