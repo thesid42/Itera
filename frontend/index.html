@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Itera</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  </head>
+  <body>
+    <div id="app">
+      <header>
+        <div class="logo">Itera</div>
+        <div class="status-badge" id="status-badge">Idle</div>
+      </header>
+
+      <main>
+        <div class="hero-section" id="hero-section">
+          <h1>What do you want to automate today?</h1>
+          <p class="subtitle">Enter your biological protocol to generate verified Opentrons code.</p>
+          <div class="input-container">
+            <input type="text" id="goal-input" placeholder="e.g. 96-well plate PCR for 80 samples, minimize cost..." autocomplete="off" />
+            <button id="submit-btn">→</button>
+          </div>
+          <div class="quick-links">
+            <span>Try:</span>
+            <button class="pill-btn">DNA extraction from 24 tissues</button>
+            <button class="pill-btn">ELISA assay, high throughput</button>
+          </div>
+        </div>
+
+        <div id="dynamic-content" class="hidden">
+          <!-- Stage 1: Strategies -->
+          <div id="strategies-view" class="view hidden">
+            <div class="view-header">
+              <h2>Select a Strategy</h2>
+              <p>Itera generated 3 optimized paths based on your goal.</p>
+            </div>
+            <div class="cards-container" id="cards-container"></div>
+          </div>
+
+          <!-- Stage 2 & 3: Compilation & Simulation -->
+          <div id="terminal-view" class="view hidden">
+            <div class="view-header">
+              <h2 id="terminal-title">Compiling Protocol...</h2>
+            </div>
+            <div class="terminal-window">
+              <div class="terminal-header">
+                <span class="dot red"></span><span class="dot yellow"></span><span class="dot green"></span>
+              </div>
+              <div class="terminal-body" id="terminal-output"></div>
+            </div>
+          </div>
+
+          <!-- Stage 4: Result -->
+          <div id="result-view" class="view hidden">
+            <div class="success-banner">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+              <h2>Protocol Verified</h2>
+            </div>
+            <div class="result-grid">
+              <div class="result-card">
+                <h3>Cost Analysis</h3>
+                <ul id="final-cost-list" class="cost-list"></ul>
+              </div>
+              <div class="result-card">
+                <h3>Next Steps</h3>
+                <p>Your code is ready. Download it below to run on your robot.</p>
+                <button class="download-btn">Download .py File</button>
+                <button class="reset-btn" id="reset-btn">Start Over</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
