@@ -1,11 +1,17 @@
 """
-OpenRouter client for Itera.
+OpenAI client for Itera.
 
-Wraps the OpenAI-compatible OpenRouter API with:
+Wraps the OpenAI API with:
   - Streaming support that calls an on_token callback
-  - Filtering of Qwen3 <think>...</think> reasoning blocks from both
-    the streaming callback and the final returned text
-  - Model and base_url sourced from config.yaml
+  - Model sourced from config.yaml
+
+# ── OpenRouter (commented out) ───────────────────────────────────────────────
+# Previously used OpenRouter with Qwen3. To switch back:
+#   1. Set OPENROUTER_API_KEY in .env
+#   2. In config.yaml set model: qwen/qwen3.6-plus and base_url: https://openrouter.ai/api/v1
+#   3. Restore _get_client() to use OPENROUTER_API_KEY + base_url from config
+#   4. Restore extra_body={"include_reasoning": False} in stream_response
+# ─────────────────────────────────────────────────────────────────────────────
 """
 import logging
 import os
@@ -22,15 +28,19 @@ _client: Optional[OpenAI] = None
 def _get_client() -> OpenAI:
     global _client
     if _client is None:
-        api_key = os.environ.get("OPENROUTER_API_KEY", "")
+        # ── OpenAI ──────────────────────────────────────────────────────────
+        api_key = os.environ.get("OPENAI_API_KEY", "")
         if not api_key:
             raise EnvironmentError(
-                "OPENROUTER_API_KEY is not set. "
-                "Export it with: export OPENROUTER_API_KEY=your_key_here"
+                "OPENAI_API_KEY is not set. "
+                "Export it with: export OPENAI_API_KEY=your_key_here"
             )
         cfg = get_llm_config()
-        logger.debug("Initialising OpenRouter client | base_url=%s | model=%s", cfg["base_url"], cfg["model"])
-        _client = OpenAI(base_url=cfg["base_url"], api_key=api_key)
+        logger.debug("Initialising OpenAI client | model=%s", cfg["model"])
+        _client = OpenAI(api_key=api_key)
+        # ── OpenRouter (commented out) ───────────────────────────────────────
+        # api_key = os.environ.get("OPENROUTER_API_KEY", "")
+        # _client = OpenAI(base_url=cfg["base_url"], api_key=api_key)
     return _client
 
 
@@ -69,7 +79,7 @@ def stream_response(
         max_tokens=max_tokens,
         temperature=temperature,
         stream=True,
-        extra_body={"include_reasoning": False},
+        # extra_body={"include_reasoning": False},  # OpenRouter/Qwen3 only
     )
 
     for chunk in stream:
