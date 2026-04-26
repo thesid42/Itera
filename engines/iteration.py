@@ -20,6 +20,7 @@ import difflib
 from utils.models import CompilerResult, SimulationAttempt, IterationResult
 from utils.cost_analyzer import analyze_cost
 from engines.compiler import compile_strategy
+from utils.supermemory_client import retrieve_fixes, store_fix
 
 logger = logging.getLogger(__name__)
 
@@ -380,6 +381,7 @@ def run_iteration(
     attempts: list = []
     current_code = compiler_result.python_code
     previous_code = ""
+    last_failed_stderr = ""  # remember the error that triggered the last recompile
 
     for attempt_num in range(1, MAX_ATTEMPTS + 1):
         logger.info("Iteration | attempt %d/%d | strategy=%r", attempt_num, MAX_ATTEMPTS, strategy_name)
@@ -402,11 +404,18 @@ def run_iteration(
         if passed:
             logger.info("Iteration | simulation PASSED on attempt %d | strategy=%r", attempt_num, strategy_name)
 
+            # If a previous attempt failed and this one passed, the fix worked — store it
+            if last_failed_stderr and diff:
+                store_fix(last_failed_stderr, diff, current_code)
+            last_failed_stderr = ""
+
             # Goal alignment check — verify the code actually implements the goal
             goal_ok, goal_feedback = _verify_goal_alignment(goal, current_code)
             if not goal_ok and attempt_num < MAX_ATTEMPTS:
                 logger.warning("Iteration | goal alignment FAILED — triggering fix recompile")
+                last_failed_stderr = goal_feedback
                 previous_code = current_code
+                past_fixes = retrieve_fixes(goal_feedback)
                 fixed = compile_strategy(
                     strategy=compiler_result.strategy,
                     goal=goal,
@@ -414,6 +423,7 @@ def run_iteration(
                     error_log=goal_feedback,
                     attempt=attempt_num + 1,
                     on_token=on_token,
+                    past_fixes=past_fixes,
                 )
                 current_code = fixed.python_code
                 continue
@@ -440,8 +450,10 @@ def run_iteration(
         if attempt_num == MAX_ATTEMPTS:
             break
 
-        # Failed — recompile with error context
+        # Failed — retrieve similar past fixes, then recompile with error context
         logger.info("Iteration | triggering re-compilation for attempt %d", attempt_num + 1)
+        last_failed_stderr = stderr
+        past_fixes = retrieve_fixes(stderr)
         previous_code = current_code
         fixed = compile_strategy(
             strategy=compiler_result.strategy,
@@ -450,6 +462,7 @@ def run_iteration(
             error_log=stderr,
             attempt=attempt_num + 1,
             on_token=on_token,
+            past_fixes=past_fixes,
         )
         current_code = fixed.python_code
 

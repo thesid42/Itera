@@ -155,21 +155,32 @@ def compile_strategy(
     error_log: str = "",
     attempt: int = 1,
     on_token=None,
+    past_fixes: list = None,
 ) -> CompilerResult:
     """
     Generate or fix Opentrons Python code for a given strategy.
 
     If error_log is provided, this is a re-compilation pass:
     the LLM sees the broken code + the simulator error and must fix it.
+    past_fixes: list of similar error→fix examples retrieved from Supermemory.
     """
     if error_log and previous_code:
         logger.info("Compiler | attempt=%d | re-compilation with error context | strategy=%r", attempt, strategy.name)
         logger.debug("Compiler | error_log: %s", error_log[:300])
+
+        fixes_section = ""
+        if past_fixes:
+            fixes_section = "\n\nKNOWN FIXES FOR SIMILAR ERRORS (apply these patterns first):\n"
+            for i, fix in enumerate(past_fixes, 1):
+                fixes_section += f"\n--- Past Fix Example {i} ---\n{fix}\n"
+            logger.info("Compiler | injecting %d past fix(es) into prompt", len(past_fixes))
+
         user_message = (
             "The following Opentrons v2 code has a simulation error.\n"
             "Fix ONLY the error. Output corrected Python code only — no explanation.\n\n"
             f"ERROR FROM SIMULATOR:\n{error_log.strip()}\n\n"
             f"BROKEN CODE:\n{previous_code.strip()}"
+            f"{fixes_section}"
         )
     else:
         logger.info("Compiler | attempt=%d | fresh compilation | strategy=%r", attempt, strategy.name)
