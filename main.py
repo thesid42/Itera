@@ -5,7 +5,7 @@ Itera — The Autonomous Cloud Lab Compiler
 Usage
 -----
   python main.py              # Textual TUI (default)
-  python main.py --web        # FastAPI web server  (http://localhost:8000)
+  python main.py --web        # FastAPI API backend (http://localhost:8000)
   python main.py --web --port 9000
 """
 import argparse
@@ -30,14 +30,15 @@ def run_tui():
 
 def run_web(host: str = "0.0.0.0", port: int = 8000):
     import uvicorn
-    logger.info("Itera starting — web mode | http://%s:%d", host, port)
-    print(f"\n  ITERA web interface → http://localhost:{port}\n")
+    logger.info("Itera starting — API backend | http://%s:%d", host, port)
+    print(f"\n  ITERA API backend → http://localhost:{port}")
+    print("  React frontend   → cd frontend && npm run dev\n")
     uvicorn.run(
         "web.app:app",
         host=host,
         port=port,
         reload=False,
-        log_level="warning",   # uvicorn access logs stay quiet; our logger handles detail
+        log_level="info",
     )
 
 
@@ -48,7 +49,7 @@ def main():
     parser.add_argument(
         "--web",
         action="store_true",
-        help="Launch the web interface instead of the TUI",
+        help="Launch the FastAPI API backend instead of the TUI",
     )
     parser.add_argument(
         "--host",

@@ -13,7 +13,7 @@ main.py
 ├── tui/
 │   └── app.py           # Textual 3-pane terminal dashboard
 ├── web/
-│   └── app.py           # FastAPI SSE backend
+│   └── app.py           # FastAPI API/SSE backend
 ├── frontend/
 │   └── src/main.js      # Vite-based web UI
 └── utils/
@@ -83,15 +83,15 @@ python main.py
 
 ---
 
-## Running — Web UI
+## Running — React Web UI
 
-The web UI requires two processes running at the same time: the FastAPI backend and the Vite frontend dev server.
+The browser UI is the Vite frontend in `frontend/`. The FastAPI backend is API-only and exposes `/api/*` Server-Sent Event endpoints.
 
 ### Terminal 1 — Start the backend
 
 ```bash
 python main.py --web
-# Listening on http://localhost:8000
+# API backend on http://localhost:8000
 ```
 
 Optional flags:
@@ -120,7 +120,7 @@ npm run dev
 
 Open **http://localhost:5173** in your browser.
 
-> The Vite dev server proxies all `/api/*` requests to the FastAPI backend, so no CORS setup is needed.
+> The Vite dev server proxies all `/api/*` requests to the FastAPI backend. Do not use `web/static/*` as the browser UI.
 
 ### Building for production (optional)
 

@@ -1,12 +1,13 @@
 """
-Itera Web Backend — FastAPI + Server-Sent Events.
+Itera API Backend — FastAPI + Server-Sent Events.
 
 Exposes the same three-engine pipeline as the TUI over HTTP so the app
-can run in a browser alongside (or instead of) the Textual interface.
+can run from the React/Vite frontend alongside (or instead of) the
+Textual interface.
 
 Endpoints
 ---------
-GET  /                  → serves the SPA (web/static/index.html)
+GET  /                  → API health and frontend handoff metadata
 POST /api/marketplace   → SSE: tokens while LLM thinks, then strategy JSON
 POST /api/compile       → SSE: code tokens + simulation attempts + final result
 
@@ -27,15 +28,14 @@ Event types:
 import asyncio
 import json
 import logging
-import os
 
 from dotenv import load_dotenv
 load_dotenv()
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.responses import StreamingResponse
-from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from utils.logger import setup_logging
@@ -93,6 +93,24 @@ class CompileRequest(BaseModel):
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
+
+@app.get("/")
+async def root():
+    """
+    API-only root.
+
+    The browser UI is the Vite app in frontend/. In development it proxies
+    /api/* to this backend; production should serve frontend/dist separately.
+    """
+    return JSONResponse(
+        {
+            "service": "Itera API",
+            "status": "ok",
+            "frontend": "Run `cd frontend && npm run dev`, then open http://localhost:5173",
+            "endpoints": ["/api/marketplace", "/api/compile"],
+        }
+    )
+
 
 @app.post("/api/marketplace")
 async def marketplace_endpoint(body: GoalRequest):
@@ -195,9 +213,3 @@ async def compile_endpoint(body: CompileRequest):
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
-
-
-# ── Static files (SPA) ────────────────────────────────────────────────────────
-# Mounted last so /api/* routes take precedence.
-_static_dir = os.path.join(os.path.dirname(__file__), "static")
-app.mount("/", StaticFiles(directory=_static_dir, html=True), name="static")
