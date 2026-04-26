@@ -70,25 +70,60 @@
       <main>
         <!-- ── Hero ───────────────────────────────────────────────────────── -->
         <section class="hero-section" id="hero-section">
-          <div class="hero-eyebrow">Powered by Qwen3 · protocols.io RAG · Opentrons v2</div>
-          <h1>What do you want to<br><span class="gradient-text">automate today?</span></h1>
-          <p class="subtitle">Describe your experiment and Itera will generate, simulate, and verify a robot-ready protocol.</p>
-          <div class="search-wrap">
-            <div class="search-box" id="search-box">
-              <svg class="search-icon" viewBox="0 0 20 20" fill="none">
-                <path d="M9 3a6 6 0 100 12A6 6 0 009 3zM3 9a6 6 0 1110.89 3.476l3.817 3.817a1 1 0 01-1.414 1.414l-3.816-3.816A6 6 0 013 9z" fill="currentColor"/>
-              </svg>
-              <input type="text" id="goal-input" placeholder="e.g. 96-well plate PCR for 80 samples, minimize cost…" autocomplete="off" spellcheck="false"/>
-              <button id="submit-btn" aria-label="Submit">
-                <svg viewBox="0 0 20 20" fill="none"><path d="M4 10h12M11 5l5 5-5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-              </button>
+          <div class="hero-grid">
+            <div class="hero-copy">
+              <div class="hero-eyebrow">AI-powered · Protocol-aware · Opentrons v2</div>
+              <h1>Compile lab intent into <span class="gradient-text">robot-ready protocols.</span></h1>
+              <p class="subtitle">Describe an experiment once. Itera prices the route, writes the Opentrons script, simulates execution, and repairs failures before handoff.</p>
+              <div class="search-wrap">
+                <div class="search-box" id="search-box">
+                  <svg class="search-icon" viewBox="0 0 20 20" fill="none">
+                    <path d="M9 3a6 6 0 100 12A6 6 0 009 3zM3 9a6 6 0 1110.89 3.476l3.817 3.817a1 1 0 01-1.414 1.414l-3.816-3.816A6 6 0 013 9z" fill="currentColor"/>
+                  </svg>
+                  <input type="text" id="goal-input" placeholder="e.g. qPCR gene expression profiling of 48 samples with SYBR Green, 384-well plate…" autocomplete="off" spellcheck="false"/>
+                  <button id="submit-btn" aria-label="Submit">
+                    <svg viewBox="0 0 20 20" fill="none"><path d="M4 10h12M11 5l5 5-5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                  </button>
+                </div>
+                <div class="quick-links">
+                  <span class="ql-label">Try:</span>
+                  <button class="pill-btn">qPCR gene expression profiling of 48 samples with SYBR Green on a 384-well plate</button>
+                  <button class="pill-btn">Cell viability assay using CellTiter-Glo on 96 samples, normalize by protein concentration</button>
+                  <button class="pill-btn">His-tag protein purification from 12 E. coli lysates using Ni-NTA magnetic beads</button>
+                  <button class="pill-btn">CRISPR sgRNA transfection into HEK293 cells across 24-well plate with lipofectamine</button>
+                </div>
+              </div>
             </div>
-            <div class="quick-links">
-              <span class="ql-label">Try:</span>
-              <button class="pill-btn">DNA extraction from 24 tissues</button>
-              <button class="pill-btn">ELISA assay, high throughput</button>
-              <button class="pill-btn">Serial dilution, 96-well</button>
-            </div>
+
+            <aside class="hero-preview" aria-label="Protocol workflow preview">
+              <div class="preview-head">
+                <div>
+                  <span class="preview-kicker">Run Preview</span>
+                  <strong>qPCR · 48 samples</strong>
+                </div>
+                <span class="preview-status">Verified</span>
+              </div>
+              <div class="preview-visual">
+                <img src="/src/assets/hero.png" alt="" />
+                <div class="plate-map" aria-hidden="true">
+                  <span></span><span></span><span></span><span></span><span></span><span></span>
+                  <span></span><span></span><span></span><span></span><span></span><span></span>
+                  <span></span><span></span><span></span><span></span><span></span><span></span>
+                  <span></span><span></span><span></span><span></span><span></span><span></span>
+                </div>
+              </div>
+              <div class="preview-metrics">
+                <div><span>Attempts</span><strong>2</strong></div>
+                <div><span>Time</span><strong>34m</strong></div>
+                <div><span>Cost</span><strong>$18.42</strong></div>
+              </div>
+              <div class="preview-steps">
+                <div class="preview-step done"><span></span>Market route</div>
+                <div class="preview-step done"><span></span>Compile script</div>
+                <div class="preview-step active"><span></span>Simulate deck</div>
+                <div class="preview-step"><span></span>Export protocol</div>
+              </div>
+            </aside>
           </div>
         </section>
 

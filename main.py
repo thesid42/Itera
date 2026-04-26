@@ -11,25 +11,30 @@ Usage
 import argparse
 
 from dotenv import load_dotenv
+
 load_dotenv()
 
 from utils.logger import setup_logging
+
 setup_logging()
 
 import logging
+
 logger = logging.getLogger(__name__)
 
 
 def run_tui():
     from tui.app import IteraApp
+
     logger.info("Itera starting — TUI mode")
-    print("\033[2J\033[H", end="")   # clear terminal
+    print("\033[2J\033[H", end="")  # clear terminal
     IteraApp().run()
     logger.info("Itera shut down")
 
 
 def run_web(host: str = "0.0.0.0", port: int = 8000):
     import uvicorn
+
     logger.info("Itera starting — API backend | http://%s:%d", host, port)
     print(f"\n  ITERA API backend → http://localhost:{port}")
     print("  React frontend   → cd frontend && npm run dev\n")
@@ -61,6 +66,9 @@ def main():
         type=int,
         default=8000,
         help="Port for the web server (default: 8000)",
+    )
+    parser.add_argument(
+        "--reload",
     )
     args = parser.parse_args()
 

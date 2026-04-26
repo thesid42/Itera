@@ -44,22 +44,23 @@ def _strip_noise(stderr: str) -> str:
 def _find_simulator() -> list:
     """
     Return the command list to invoke opentrons_simulate.
-    Tries known locations for the .exe, then falls back to
-    'python -m opentrons.simulate' which works anywhere.
+    Checks the venv bin/Scripts directory for the script (with and without .exe),
+    then falls back to 'python -m opentrons.simulate' which works anywhere.
     """
+    bin_dir = os.path.dirname(sys.executable)
     candidates = [
-        # Same dir as the running Python interpreter (venv)
-        os.path.join(os.path.dirname(sys.executable), "opentrons_simulate.exe"),
-        os.path.join(os.path.dirname(sys.executable), "Scripts", "opentrons_simulate.exe"),
-        # User-site Scripts (pip install --user on Windows)
-        r"C:\Users\siddh\AppData\Roaming\Python\Python314\Scripts\opentrons_simulate.exe",
+        # Unix/macOS venv
+        os.path.join(bin_dir, "opentrons_simulate"),
+        # Windows venv (Scripts subfolder, .exe)
+        os.path.join(bin_dir, "Scripts", "opentrons_simulate.exe"),
+        os.path.join(bin_dir, "opentrons_simulate.exe"),
     ]
     for path in candidates:
         if os.path.isfile(path):
             logger.debug("Simulator | found opentrons_simulate at %s", path)
             return [path]
 
-    logger.info("Simulator | opentrons_simulate not found on PATH — using 'python -m opentrons.simulate'")
+    logger.info("Simulator | opentrons_simulate not found in venv — using 'python -m opentrons.simulate'")
     return [sys.executable, "-m", "opentrons.simulate"]
 
 
@@ -177,7 +178,15 @@ def _dry_run_simulate(code: str) -> tuple:
     if "protocol_api" not in code:
         errors.append("ImportError: Missing 'from opentrons import protocol_api'")
     if "metadata" not in code:
-        errors.append("ProtocolWarning: Missing metadata dict — add metadata = {'apiLevel': '2.14'}")
+        errors.append("ProtocolError: Missing metadata dict — add metadata = {'apiLevel': '2.18'}")
+    elif "apiLevel" not in code:
+        errors.append("ProtocolError: metadata dict is missing 'apiLevel' key — add 'apiLevel': '2.18'")
+    if "define_liquid" not in code:
+        errors.append("ProtocolError: Missing protocol.define_liquid() calls — all liquids must be defined")
+    if "load_liquid" not in code:
+        errors.append("ProtocolError: Missing well.load_liquid() calls — load starting volumes into reservoir wells")
+    if "add_parameters" not in code:
+        errors.append("ProtocolError: Missing add_parameters() function — runtime parameters (volumes, counts, times) must be declared")
 
     # Check 3: Deprecated / forbidden patterns
     deprecated = [
@@ -259,6 +268,88 @@ def _dry_run_simulate(code: str) -> tuple:
     return True, ""
 
 
+_VERIFIER_SYSTEM_PROMPT = """You are IteraVerifier, a strict lab protocol correctness checker.
+
+You are given a scientist's original experiment goal and an Opentrons Python protocol generated to fulfil it.
+Your job: decide whether the protocol ACTUALLY implements the goal completely and correctly.
+
+Respond with ONLY valid JSON — no markdown, no preamble:
+{
+  "passed": true | false,
+  "missing": ["<specific step or reagent missing from the code>", ...],
+  "wrong": ["<specific thing implemented incorrectly>", ...],
+  "summary": "<one sentence verdict>"
+}
+
+Be strict:
+- If a reagent mentioned in the goal is absent from define_liquid() → missing
+- If a key protocol step (e.g. cell lysis, PCR cycling, magnetic separation) is absent → missing
+- If volumes, temperatures, or cycle counts are biologically unrealistic for the goal → wrong
+- If the wrong labware type is used for the assay → wrong
+- Ignore minor style issues (variable names, comments)
+
+If the protocol is a reasonable, complete implementation of the goal, return passed: true with empty lists."""
+
+_VERIFIER_MAX_TOKENS = 512
+
+
+def _verify_goal_alignment(goal: str, code: str) -> tuple[bool, str]:
+    """
+    Ask the LLM to check whether the generated code actually implements the goal.
+    Returns (passed, feedback_for_compiler).
+    Skipped silently if goal is empty.
+    """
+    if not goal:
+        return True, ""
+
+    from utils.openrouter_client import stream_response
+    from utils.config_loader import get_llm_config
+    import json as _json
+
+    cfg = get_llm_config()
+    user_message = (
+        f"ORIGINAL GOAL:\n{goal}\n\n"
+        f"GENERATED PROTOCOL CODE:\n{code}"
+    )
+
+    logger.info("Verifier | checking goal alignment | goal=%r", goal[:80])
+    try:
+        raw = stream_response(
+            system_prompt=_VERIFIER_SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": user_message}],
+            max_tokens=_VERIFIER_MAX_TOKENS,
+            temperature=cfg.get("temperature", {}).get("compiler", 0.2),
+        )
+        raw = raw.strip()
+        if raw.startswith("```"):
+            raw = raw.split("```")[1].lstrip("json").strip()
+
+        result = _json.loads(raw)
+        passed = bool(result.get("passed", True))
+        missing = result.get("missing", [])
+        wrong = result.get("wrong", [])
+        summary = result.get("summary", "")
+
+        if passed:
+            logger.info("Verifier | PASSED | %s", summary)
+            return True, ""
+
+        feedback_lines = [f"Goal alignment check FAILED: {summary}"]
+        if missing:
+            feedback_lines.append("Missing from protocol:")
+            feedback_lines.extend(f"  - {m}" for m in missing)
+        if wrong:
+            feedback_lines.append("Incorrectly implemented:")
+            feedback_lines.extend(f"  - {w}" for w in wrong)
+        feedback = "\n".join(feedback_lines)
+        logger.warning("Verifier | FAILED |\n%s", feedback)
+        return False, feedback
+
+    except Exception as exc:
+        logger.warning("Verifier | error during verification (%s) — skipping", exc)
+        return True, ""
+
+
 def _compute_diff(old_code: str, new_code: str) -> str:
     """Generate a unified diff string between two code versions."""
     old_lines = old_code.splitlines(keepends=True)
@@ -274,6 +365,7 @@ def _compute_diff(old_code: str, new_code: str) -> str:
 
 def run_iteration(
     compiler_result: CompilerResult,
+    goal: str = "",
     on_attempt=None,
     on_token=None,
 ) -> IterationResult:
@@ -308,7 +400,24 @@ def run_iteration(
             on_attempt(sim_attempt)
 
         if passed:
-            logger.info("Iteration | PASSED on attempt %d | strategy=%r", attempt_num, strategy_name)
+            logger.info("Iteration | simulation PASSED on attempt %d | strategy=%r", attempt_num, strategy_name)
+
+            # Goal alignment check — verify the code actually implements the goal
+            goal_ok, goal_feedback = _verify_goal_alignment(goal, current_code)
+            if not goal_ok and attempt_num < MAX_ATTEMPTS:
+                logger.warning("Iteration | goal alignment FAILED — triggering fix recompile")
+                previous_code = current_code
+                fixed = compile_strategy(
+                    strategy=compiler_result.strategy,
+                    goal=goal,
+                    previous_code=current_code,
+                    error_log=goal_feedback,
+                    attempt=attempt_num + 1,
+                    on_token=on_token,
+                )
+                current_code = fixed.python_code
+                continue
+
             final_cost = analyze_cost(current_code)
             logger.info(
                 "Iteration | final cost $%.2f | tips=%d | reagents=%.0fuL | machine=%.1fmin",
@@ -336,6 +445,7 @@ def run_iteration(
         previous_code = current_code
         fixed = compile_strategy(
             strategy=compiler_result.strategy,
+            goal=goal,
             previous_code=current_code,
             error_log=stderr,
             attempt=attempt_num + 1,

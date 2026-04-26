@@ -129,15 +129,18 @@ function renderStrategies(strategies) {
     const card = document.createElement('div');
     card.className = 'strategy-card';
     card.innerHTML = `
-      ${s.recommended ? '<div class="tag">Recommended</div>' : ''}
+      <div class="card-top">
+        ${s.recommended ? '<div class="tag">Recommended</div>' : '<div></div>'}
+        <div class="duration-chip">${s.estimated_duration_min} min</div>
+      </div>
       <h3 class="card-title">${s.name}</h3>
       <p class="card-desc">${s.description}</p>
       <div class="card-stats">
-        <div class="stat-row"><span class="stat-label">Duration</span><span class="stat-val">${s.estimated_duration_min} min</span></div>
         <div class="stat-row"><span class="stat-label">Tips</span><span class="stat-val">${c.tips.count}× · $${c.tips.usd.toFixed(2)}</span></div>
         <div class="stat-row"><span class="stat-label">Reagents</span><span class="stat-val">${c.reagents.total_ul.toFixed(0)} µL · $${c.reagents.usd.toFixed(2)}</span></div>
         <div class="stat-row total-row"><span class="stat-label">Estimated Total</span><span class="stat-val">$${c.total_estimated_usd.toFixed(2)}</span></div>
-      </div>`;
+      </div>
+      <div class="card-action">Compile and simulate</div>`;
     card.addEventListener('click', () => {
       if (!awaitingSelection) return;
       awaitingSelection = false;

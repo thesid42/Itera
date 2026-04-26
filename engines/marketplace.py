@@ -180,6 +180,7 @@ def run_marketplace(goal: str, on_token=None) -> MarketplaceResult:
         system_prompt=system_prompt,
         messages=[{"role": "user", "content": user_message}],
         max_tokens=cfg["max_tokens"]["marketplace"],
+        temperature=cfg.get("temperature", {}).get("marketplace", 0.7),
         on_token=on_token,
     )
 

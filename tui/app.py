@@ -242,12 +242,12 @@ class IteraApp(App):
 
         status.stage = 1
         chat.write(f"\n[bold cyan]→ Goal:[/] {goal}\n")
-        chat.write("[dim]⟳ Querying OpenRouter (Qwen3)…[/]\n")
+        chat.write("[dim]⟳ Analysing experiment goal…[/]\n")
         market.clear()
 
         # Spinner runs concurrently with the LLM call
         spinner = asyncio.create_task(
-            self._spin(market, "Qwen3 is generating strategies")
+            self._spin(market, "Generating strategies…")
         )
 
         loop = asyncio.get_event_loop()
@@ -266,6 +266,7 @@ class IteraApp(App):
             spinner.cancel()
 
         self._marketplace_result = result
+        self._goal = goal
         market.clear()
         chat.write("[dim green]✓ Strategies received.[/]\n")
 
@@ -314,7 +315,7 @@ class IteraApp(App):
 
         status.stage = 2
         chat.write(f"\n[bold green]→ Compiling:[/] {strategy.name}\n")
-        chat.write("[dim]⟳ Streaming Opentrons protocol from Qwen3…[/]\n")
+        chat.write("[dim]⟳ Generating protocol…[/]\n")
         sim.clear()
         sim.write("[bold cyan]── Protocol code (live stream) ──────────────────[/]\n")
 
@@ -324,8 +325,9 @@ class IteraApp(App):
         on_token, flush_compiler = self._make_stream_callback(self, sim, style="dim green")
 
         try:
-            compiler_result = await loop.run_in_executor(
-                None, lambda: compile_strategy(strategy, on_token=on_token)
+            goal = getattr(self, "_goal", "")
+        compiler_result = await loop.run_in_executor(
+                None, lambda: compile_strategy(strategy, goal=goal, on_token=on_token)
             )
         except Exception as e:
             chat.write(f"[bold red]✗ Compiler error:[/] {e}\n")
@@ -376,6 +378,7 @@ class IteraApp(App):
                 None,
                 lambda: run_iteration(
                     compiler_result,
+                    goal=goal,
                     on_attempt=on_attempt,
                     on_token=on_recompile,
                 ),

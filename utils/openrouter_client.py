@@ -38,6 +38,7 @@ def stream_response(
     system_prompt: str,
     messages: list,
     max_tokens: int,
+    temperature: float = 0.7,
     on_token=None,
 ) -> str:
     """
@@ -54,8 +55,8 @@ def stream_response(
     role = messages[0].get("role", "?") if messages else "?"
     preview = str(messages[0].get("content", ""))[:80] if messages else ""
     logger.info(
-        "LLM request | model=%s | max_tokens=%d | first_msg_role=%s | preview=%r",
-        model, max_tokens, role, preview,
+        "LLM request | model=%s | max_tokens=%d | temperature=%.2f | first_msg_role=%s | preview=%r",
+        model, max_tokens, temperature, role, preview,
     )
 
     full_text = ""
@@ -66,6 +67,7 @@ def stream_response(
         model=model,
         messages=[{"role": "system", "content": system_prompt}, *messages],
         max_tokens=max_tokens,
+        temperature=temperature,
         stream=True,
         extra_body={"include_reasoning": False},
     )

@@ -3,8 +3,12 @@ llm:
   model: qwen/qwen3.6-plus
   base_url: https://openrouter.ai/api/v1
   max_tokens:
-    marketplace: 2000
-    compiler: 3000
+    marketplace: 4000 # raised: 3 detailed strategies + cost JSON needs room
+    compiler: 8000 # raised: full Opentrons protocols can be 200-400 lines
+  temperature:
+    marketplace: 0.7 # some creativity for strategy variety
+    compiler: 0.2 # low — deterministic, correct code matters more than novelty
+    pricing: 0.3 # dynamic pricing estimator
 
 # ── Pricing baselines ───────────────────────────────────────────────────────
 # These are CALIBRATED ANCHOR RATES from real supplier catalogs (April 2026).
@@ -23,20 +27,20 @@ llm:
 #   Machine time: Amortized OT-2 + cloud lab operator overhead ~$0.30/min
 pricing:
   tips:
-    standard_200ul: 0.089   # USD per 200/300µL Opentrons tip (verified: $850/9600)
-    filtered_200ul: 0.13    # USD per filtered 200µL tip (premium)
-    large_1000ul:   0.18    # USD per 1000µL tip (smaller pack, higher unit cost)
+    standard_200ul: 0.089 # USD per 200/300µL Opentrons tip (verified: $850/9600)
+    filtered_200ul: 0.13 # USD per filtered 200µL tip (premium)
+    large_1000ul: 0.18 # USD per 1000µL tip (smaller pack, higher unit cost)
   reagents:
     # These are starting anchors — the LLM estimator will refine per protocol
-    enzyme:   0.09    # USD/µL — NEB Q5 PCR master mix benchmark
-    antibody: 0.25    # USD/µL — research-grade primary antibody (conservative)
-    buffer:   0.001   # USD/µL — PBS, Tris, saline bulk solutions
-    default:  0.005   # USD/µL — general reagents (fallback)
-  machine_time_per_min: 0.30  # USD/min — amortized OT-2 + cloud overhead
+    enzyme: 0.09 # USD/µL — NEB Q5 PCR master mix benchmark
+    antibody: 0.25 # USD/µL — research-grade primary antibody (conservative)
+    buffer: 0.001 # USD/µL — PBS, Tris, saline bulk solutions
+    default: 0.005 # USD/µL — general reagents (fallback)
+  machine_time_per_min: 0.30 # USD/min — amortized OT-2 + cloud overhead
 
 rag:
-  protocols_io_max: 3         # protocols.io: protocols to inject per query
-  protocols_io_detail_max: 2  # protocols.io: how many to fetch full steps/materials for
+  protocols_io_max: 3 # protocols.io: protocols to inject per query
+  protocols_io_detail_max: 2 # protocols.io: how many to fetch full steps/materials for
 
 outputs:
   # Directory (relative to project root) where verified robot-ready .py files are saved.

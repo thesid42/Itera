@@ -20,9 +20,20 @@ You translate lab protocol strategies into VALID, RUNNABLE Opentrons API v2 Pyth
 OUTPUT RULES:
 - Output ONLY raw Python code — no markdown, no backticks, no explanation
 - Always start with: from opentrons import protocol_api
-- Always include the metadata dict and run(protocol: protocol_api.ProtocolContext) function
-- Use only labware names that exist in the Opentrons labware library
+- Always include the metadata dict with 'apiLevel': '2.18' and the run(protocol: protocol_api.ProtocolContext) function
+- Use only labware names that exist in the Opentrons labware library (see list below)
 - Never use deprecated API v1 syntax
+- ALWAYS define every liquid with protocol.define_liquid() and load starting volumes with well.load_liquid()
+- ALWAYS define runtime parameters in an add_parameters(parameters) function at module level
+- Parameters must cover at minimum: sample count, key volumes (µL), and incubation times
+
+REQUIRED METADATA FORMAT (always include exactly this):
+metadata = {
+    'protocolName': '<short descriptive name>',
+    'author': 'Itera',
+    'description': '<one-line description>',
+    'apiLevel': '2.18'
+}
 
 CORRECT OPENTRONS V2 SYNTAX EXAMPLES:
 
@@ -33,6 +44,49 @@ p300 = protocol.load_instrument('p300_single_gen2', 'right', tip_racks=[tiprack]
 
 # Correct location syntax (slot is a STRING):
 module = protocol.load_module('temperature module gen2', '3')  # slot as string
+
+# REQUIRED — Define every liquid used in the protocol:
+sample_liquid   = protocol.define_liquid(name='Sample',          description='Cell lysate or analyte',  display_color='#0077FF')
+buffer_liquid   = protocol.define_liquid(name='Wash Buffer',     description='PBS pH 7.4',               display_color='#00BBBB')
+reagent_liquid  = protocol.define_liquid(name='Primary Antibody',description='Anti-target Ab, 1:1000',   display_color='#FF6600')
+waste_liquid    = protocol.define_liquid(name='Waste',           description='Liquid waste',             display_color='#888888')
+
+# REQUIRED — Load starting volumes into the wells that hold each liquid:
+reservoir['A1'].load_liquid(liquid=sample_liquid,  volume=5000)   # µL present at run start
+reservoir['A2'].load_liquid(liquid=buffer_liquid,  volume=10000)
+reservoir['A3'].load_liquid(liquid=reagent_liquid, volume=2000)
+
+# REQUIRED — Runtime parameters (define BEFORE run(), at module level, using add_parameters):
+def add_parameters(parameters: protocol_api.Parameters):
+    parameters.add_int(
+        variable_name='sample_count',
+        display_name='Number of samples',
+        description='How many wells to process (1–96)',
+        default=96,
+        minimum=1,
+        maximum=96,
+    )
+    parameters.add_float(
+        variable_name='incubation_time_min',
+        display_name='Incubation time (min)',
+        description='Primary antibody incubation duration',
+        default=30.0,
+        minimum=5.0,
+        maximum=120.0,
+    )
+    parameters.add_float(
+        variable_name='wash_volume_ul',
+        display_name='Wash volume (µL)',
+        description='Volume per wash cycle',
+        default=200.0,
+        minimum=50.0,
+        maximum=300.0,
+    )
+
+# Inside run(), read parameters via protocol.params:
+# sample_count      = protocol.params.sample_count
+# incubation_time   = protocol.params.incubation_time_min
+# wash_vol          = protocol.params.wash_volume_ul
 
 # Correct transfer:
 p300.pick_up_tip()
@@ -59,15 +113,25 @@ tc_mod.execute_profile(steps=profile, repetitions=30, block_max_volume=25)
 tc_mod.set_block_temperature(4)
 tc_mod.open_lid()
 
-COMMON VALID LABWARE NAMES:
+COMMON VALID LABWARE NAMES (use ONLY these exact strings):
+Plates:
 - corning_96_wellplate_360ul_flat
 - nest_96_wellplate_100ul_pcr_full_skirt
+- nest_96_wellplate_200ul_flat
 - nest_384_wellplate_100ul_flat
-- opentrons_96_tiprack_300ul
+Tip racks:
 - opentrons_96_tiprack_20ul
+- opentrons_96_tiprack_300ul
+- opentrons_96_tiprack_1000ul
+- opentrons_96_filtertiprack_20ul
 - opentrons_96_filtertiprack_200ul
+Tube racks:
 - opentrons_6_tuberack_falcon_50ml_conical
+- opentrons_24_tuberack_eppendorf_1.5ml_safelock_snapcap
+- opentrons_24_tuberack_nest_0.5ml_screwcap
+Reservoirs:
 - agilent_1_reservoir_290ml
+- nest_1_reservoir_195ml
 - nest_12_reservoir_15ml
 
 COMMON VALID INSTRUMENT NAMES:
@@ -86,6 +150,7 @@ COST OPTIMIZATION RULES to follow:
 
 def compile_strategy(
     strategy: Strategy,
+    goal: str = "",
     previous_code: str = "",
     error_log: str = "",
     attempt: int = 1,
@@ -108,8 +173,10 @@ def compile_strategy(
         )
     else:
         logger.info("Compiler | attempt=%d | fresh compilation | strategy=%r", attempt, strategy.name)
+        goal_line = f"Original experiment goal: {goal}\n" if goal else ""
         user_message = (
             "Generate Opentrons API v2 Python code for this protocol strategy:\n\n"
+            f"{goal_line}"
             f"Strategy name: {strategy.name}\n"
             f"Description: {strategy.description}\n"
             f"Labware to use: {strategy.labware}\n"
@@ -126,6 +193,7 @@ def compile_strategy(
         system_prompt=SYSTEM_PROMPT,
         messages=[{"role": "user", "content": user_message}],
         max_tokens=cfg["max_tokens"]["compiler"],
+        temperature=cfg.get("temperature", {}).get("compiler", 0.2),
         on_token=on_token,
     )
 

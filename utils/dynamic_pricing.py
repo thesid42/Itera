@@ -188,10 +188,13 @@ def estimate_from_materials(
     )
 
     try:
+        from utils.config_loader import get_llm_config
+        _cfg = get_llm_config()
         raw = stream_response(
             system_prompt=system_prompt,
             messages=[{"role": "user", "content": user_message}],
             max_tokens=600,
+            temperature=_cfg.get("temperature", {}).get("pricing", 0.3),
             on_token=on_token,
         )
         raw = raw.strip()

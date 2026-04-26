@@ -90,6 +90,7 @@ class GoalRequest(BaseModel):
 
 class CompileRequest(BaseModel):
     strategy: dict   # serialised Strategy (from strategies SSE event)
+    goal: str = ""   # original user goal, forwarded to the compiler for context
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
@@ -142,7 +143,7 @@ async def marketplace_endpoint(body: GoalRequest):
             await queue.put(None)
 
     async def generate():
-        yield _sse("status", "Connecting to Qwen3 via OpenRouter…")
+        yield _sse("status", "Analysing your experiment goal…")
         asyncio.create_task(run())
         async for frame in _drain(queue):
             yield frame
@@ -165,7 +166,8 @@ async def compile_endpoint(body: CompileRequest):
     single 'result' event with the final IterationResult.
     """
     strategy = Strategy(**body.strategy)
-    logger.info("Web | compile | strategy=%r", strategy.name)
+    goal = body.goal
+    logger.info("Web | compile | strategy=%r | goal=%r", strategy.name, goal)
 
     loop = asyncio.get_event_loop()
     queue: asyncio.Queue = asyncio.Queue()
@@ -183,13 +185,14 @@ async def compile_endpoint(body: CompileRequest):
         try:
             await queue.put(("status", "Compiling Opentrons protocol…"))
             compiler_result = await loop.run_in_executor(
-                None, lambda: compile_strategy(strategy, on_token=on_code)
+                None, lambda: compile_strategy(strategy, goal=goal, on_token=on_code)
             )
             await queue.put(("status", "Running simulation loop…"))
             iter_result = await loop.run_in_executor(
                 None,
                 lambda: run_iteration(
                     compiler_result,
+                    goal=goal,
                     on_attempt=on_attempt,
                     on_token=on_recompile,
                 ),

@@ -82,7 +82,8 @@ export class LiveGraph {
 
   _fillNode(el, step) {
     const clickable = step.status === 'fail' && step.error;
-    el.className = `gn-node gnt-${step.type} gns-${step.status}${clickable ? ' gn-clickable' : ''}`;
+    const visible = el.classList.contains('gn-in');
+    el.className = `gn-node gnt-${step.type} gns-${step.status}${visible ? ' gn-in' : ''}${clickable ? ' gn-clickable' : ''}`;
 
     el.innerHTML = `
       <div class="gn-icon-wrap">
