@@ -3,78 +3,206 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Itera</title>
+    <title>Itera — Autonomous Lab Compiler</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   </head>
   <body>
     <div id="app">
-      <header>
-        <div class="logo">Itera</div>
-        <div class="status-badge" id="status-badge">Idle</div>
+
+      <!-- ── Header ─────────────────────────────────────────────────────────── -->
+      <header id="site-header">
+        <div class="header-inner">
+          <!-- Logo -->
+          <div class="logo-group">
+            <svg class="logo-icon" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect width="32" height="32" rx="8" fill="url(#logoGrad)"/>
+              <path d="M10 9h12M10 16h12M10 23h12" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
+              <circle cx="16" cy="9"  r="2.2" fill="#93c5fd"/>
+              <circle cx="22" cy="16" r="2.2" fill="#a5b4fc"/>
+              <circle cx="10" cy="23" r="2.2" fill="#6ee7b7"/>
+              <defs>
+                <linearGradient id="logoGrad" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
+                  <stop stop-color="#3b82f6"/>
+                  <stop offset="1" stop-color="#6366f1"/>
+                </linearGradient>
+              </defs>
+            </svg>
+            <span class="logo-text">Itera</span>
+            <span class="logo-tag">Lab Compiler</span>
+          </div>
+
+          <!-- Pipeline nav (center) -->
+          <nav class="pipeline" id="pipeline">
+            <div class="pipe-step" data-step="idle">
+              <span class="pipe-dot"></span><span class="pipe-label">Idle</span>
+            </div>
+            <div class="pipe-divider"></div>
+            <div class="pipe-step" data-step="market">
+              <span class="pipe-dot"></span><span class="pipe-label">Market</span>
+            </div>
+            <div class="pipe-divider"></div>
+            <div class="pipe-step" data-step="compile">
+              <span class="pipe-dot"></span><span class="pipe-label">Compile</span>
+            </div>
+            <div class="pipe-divider"></div>
+            <div class="pipe-step" data-step="simulate">
+              <span class="pipe-dot"></span><span class="pipe-label">Simulate</span>
+            </div>
+            <div class="pipe-divider"></div>
+            <div class="pipe-step" data-step="verified">
+              <span class="pipe-dot"></span><span class="pipe-label">Verified</span>
+            </div>
+          </nav>
+
+          <!-- Status pill (right) -->
+          <div class="header-right">
+            <div class="status-pill" id="status-pill">
+              <span class="status-dot" id="status-dot"></span>
+              <span id="status-text">Ready</span>
+            </div>
+          </div>
+        </div>
+        <div class="header-progress" id="header-progress"></div>
       </header>
 
       <main>
-        <div class="hero-section" id="hero-section">
-          <h1>What do you want to automate today?</h1>
-          <p class="subtitle">Enter your biological protocol to generate verified Opentrons code.</p>
-          <div class="input-container">
-            <input type="text" id="goal-input" placeholder="e.g. 96-well plate PCR for 80 samples, minimize cost..." autocomplete="off" />
-            <button id="submit-btn">→</button>
+        <!-- ── Hero ───────────────────────────────────────────────────────── -->
+        <section class="hero-section" id="hero-section">
+          <div class="hero-eyebrow">Powered by Qwen3 · protocols.io RAG · Opentrons v2</div>
+          <h1>What do you want to<br><span class="gradient-text">automate today?</span></h1>
+          <p class="subtitle">Describe your experiment and Itera will generate, simulate, and verify a robot-ready protocol.</p>
+          <div class="search-wrap">
+            <div class="search-box" id="search-box">
+              <svg class="search-icon" viewBox="0 0 20 20" fill="none">
+                <path d="M9 3a6 6 0 100 12A6 6 0 009 3zM3 9a6 6 0 1110.89 3.476l3.817 3.817a1 1 0 01-1.414 1.414l-3.816-3.816A6 6 0 013 9z" fill="currentColor"/>
+              </svg>
+              <input type="text" id="goal-input" placeholder="e.g. 96-well plate PCR for 80 samples, minimize cost…" autocomplete="off" spellcheck="false"/>
+              <button id="submit-btn" aria-label="Submit">
+                <svg viewBox="0 0 20 20" fill="none"><path d="M4 10h12M11 5l5 5-5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </button>
+            </div>
+            <div class="quick-links">
+              <span class="ql-label">Try:</span>
+              <button class="pill-btn">DNA extraction from 24 tissues</button>
+              <button class="pill-btn">ELISA assay, high throughput</button>
+              <button class="pill-btn">Serial dilution, 96-well</button>
+            </div>
           </div>
-          <div class="quick-links">
-            <span>Try:</span>
-            <button class="pill-btn">DNA extraction from 24 tissues</button>
-            <button class="pill-btn">ELISA assay, high throughput</button>
-          </div>
-        </div>
+        </section>
 
+        <!-- ── Dynamic content ────────────────────────────────────────────── -->
         <div id="dynamic-content" class="hidden">
-          <!-- Stage 1: Strategies -->
+
+          <!-- Loader (skeleton cards) -->
+          <div id="loader-view" class="view hidden">
+            <div class="loader-header">
+              <div class="loader-spinner"></div>
+              <span id="loader-msg">Querying marketplace…</span>
+            </div>
+            <div class="skeleton-grid">
+              <div class="skeleton-card"><div class="sk sk-title"></div><div class="sk sk-line"></div><div class="sk sk-line short"></div><div class="sk sk-stats"></div></div>
+              <div class="skeleton-card"><div class="sk sk-title"></div><div class="sk sk-line"></div><div class="sk sk-line short"></div><div class="sk sk-stats"></div></div>
+              <div class="skeleton-card"><div class="sk sk-title"></div><div class="sk sk-line"></div><div class="sk sk-line short"></div><div class="sk sk-stats"></div></div>
+            </div>
+          </div>
+
+          <!-- Strategies -->
           <div id="strategies-view" class="view hidden">
             <div class="view-header">
               <h2>Select a Strategy</h2>
-              <p>Itera generated 3 optimized paths based on your goal.</p>
+              <p>Itera generated optimized paths — click one to compile &amp; simulate.</p>
             </div>
             <div class="cards-container" id="cards-container"></div>
           </div>
 
-          <!-- Stage 2 & 3: Compilation & Simulation -->
-          <div id="terminal-view" class="view hidden">
-            <div class="view-header">
-              <h2 id="terminal-title">Compiling Protocol...</h2>
-            </div>
-            <div class="terminal-window">
-              <div class="terminal-header">
-                <span class="dot red"></span><span class="dot yellow"></span><span class="dot green"></span>
-              </div>
-              <div class="terminal-body" id="terminal-output"></div>
-            </div>
-          </div>
+          <!-- ── Execution panel: persists across terminal + result ── -->
+          <div id="exec-panel" class="hidden">
+            <div class="exec-split">
 
-          <!-- Stage 4: Result -->
-          <div id="result-view" class="view hidden">
-            <div class="success-banner">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
-              <h2>Protocol Verified</h2>
-            </div>
-            <div class="result-grid">
-              <div class="result-card">
-                <h3>Cost Analysis</h3>
-                <ul id="final-cost-list" class="cost-list"></ul>
+              <!-- Left: terminal or result -->
+              <div class="exec-main">
+
+                <!-- Terminal pane -->
+                <div id="terminal-pane" class="hidden">
+                  <div class="exec-pane-header">
+                    <div class="term-title-group">
+                      <h2 id="terminal-title">Compiling Protocol…</h2>
+                      <p id="terminal-subtitle">Streaming output</p>
+                    </div>
+                    <div class="terminal-spinner" id="terminal-spinner">
+                      <div class="ts-ring"></div>
+                      <span class="ts-label" id="ts-label">Working</span>
+                    </div>
+                  </div>
+                  <div class="terminal-window">
+                    <div class="terminal-header">
+                      <span class="dot red"></span>
+                      <span class="dot yellow"></span>
+                      <span class="dot green"></span>
+                      <span class="terminal-tab" id="terminal-tab">protocol.py</span>
+                    </div>
+                    <div class="terminal-body" id="terminal-output"></div>
+                  </div>
+                </div>
+
+                <!-- Result pane -->
+                <div id="result-pane" class="hidden">
+                  <div class="result-banner" id="result-banner">
+                    <div class="banner-icon" id="banner-icon">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                    </div>
+                    <div>
+                      <h2 id="result-title">Protocol Verified</h2>
+                      <p id="result-subtitle">Zero simulation errors · Ready for your robot</p>
+                    </div>
+                  </div>
+                  <div class="result-grid">
+                    <div class="result-card">
+                      <div class="result-card-label">Cost Breakdown</div>
+                      <ul id="final-cost-list" class="cost-list"></ul>
+                    </div>
+                    <div class="result-card actions-card">
+                      <div class="result-card-label">Next Steps</div>
+                      <p class="result-desc">Your verified protocol is ready. Download the <code>.py</code> file and transfer it to your Opentrons robot.</p>
+                      <button class="download-btn" id="download-btn">
+                        <svg viewBox="0 0 20 20" fill="none"><path d="M10 3v10M5 13l5 5 5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 17h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+                        Download protocol.py
+                      </button>
+                      <button class="reset-btn" id="reset-btn">Start New Experiment</button>
+                    </div>
+                  </div>
+                </div>
+
+              </div><!-- /exec-main -->
+
+              <!-- Right: live execution graph -->
+              <div class="exec-graph-col">
+                <div class="graph-topbar">
+                  <div class="graph-topbar-left">
+                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                      <circle cx="3" cy="8" r="1.5"/><circle cx="8" cy="3" r="1.5"/><circle cx="13" cy="8" r="1.5"/><circle cx="8" cy="13" r="1.5"/>
+                      <path d="M4.5 8h2M8 4.5v2M11.5 8h-2M8 11.5v-2"/>
+                    </svg>
+                    <span>Execution Graph</span>
+                  </div>
+                  <div class="graph-topbar-badge" id="graph-badge"></div>
+                </div>
+                <div id="graph-canvas" class="graph-canvas-wrap"></div>
+                <div class="graph-hint" id="graph-hint">
+                  <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="7" cy="7" r="5"/><path d="M7 5v2M7 9v.5"/></svg>
+                  Hover failed nodes to see error details
+                </div>
               </div>
-              <div class="result-card">
-                <h3>Next Steps</h3>
-                <p>Your code is ready. Download it below to run on your robot.</p>
-                <button class="download-btn">Download .py File</button>
-                <button class="reset-btn" id="reset-btn">Start Over</button>
-              </div>
+
             </div>
-          </div>
-        </div>
+          </div><!-- /exec-panel -->
+
+        </div><!-- /dynamic-content -->
       </main>
     </div>
+
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>

@@ -40,8 +40,8 @@ def setup_logging(level: int = logging.DEBUG) -> None:
     fh.setFormatter(formatter)
     root.addHandler(fh)
 
-    # Console handler — WARNING+ only so it doesn't disrupt the TUI
+    # Console handler — INFO+ so API logs are visible in the terminal
     ch = logging.StreamHandler()
-    ch.setLevel(logging.WARNING)
+    ch.setLevel(logging.INFO)
     ch.setFormatter(formatter)
     root.addHandler(ch)

@@ -1,26 +1,73 @@
 #!/usr/bin/env python3
 """
 Itera — The Autonomous Cloud Lab Compiler
-Entry point: launches the TUI and wires all three engines.
+
+Usage
+-----
+  python main.py              # Textual TUI (default)
+  python main.py --web        # FastAPI API backend (http://localhost:8000)
+  python main.py --web --port 9000
 """
+import argparse
+
 from dotenv import load_dotenv
-load_dotenv()  # loads OPENROUTER_API_KEY from .env if present
+load_dotenv()
 
 from utils.logger import setup_logging
-setup_logging()  # must be called before any engine imports
+setup_logging()
 
 import logging
 logger = logging.getLogger(__name__)
 
-from tui.app import IteraApp
+
+def run_tui():
+    from tui.app import IteraApp
+    logger.info("Itera starting — TUI mode")
+    print("\033[2J\033[H", end="")   # clear terminal
+    IteraApp().run()
+    logger.info("Itera shut down")
+
+
+def run_web(host: str = "0.0.0.0", port: int = 8000):
+    import uvicorn
+    logger.info("Itera starting — API backend | http://%s:%d", host, port)
+    print(f"\n  ITERA API backend → http://localhost:{port}")
+    print("  React frontend   → cd frontend && npm run dev\n")
+    uvicorn.run(
+        "web.app:app",
+        host=host,
+        port=port,
+        reload=False,
+        log_level="info",
+    )
 
 
 def main():
-    logger.info("Itera starting up")
-    print("\033[2J\033[H", end="")  # clear terminal
-    app = IteraApp()
-    app.run()
-    logger.info("Itera shut down")
+    parser = argparse.ArgumentParser(
+        description="Itera — Autonomous Cloud Lab Compiler"
+    )
+    parser.add_argument(
+        "--web",
+        action="store_true",
+        help="Launch the FastAPI API backend instead of the TUI",
+    )
+    parser.add_argument(
+        "--host",
+        default="0.0.0.0",
+        help="Host for the web server (default: 0.0.0.0)",
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=8000,
+        help="Port for the web server (default: 8000)",
+    )
+    args = parser.parse_args()
+
+    if args.web:
+        run_web(host=args.host, port=args.port)
+    else:
+        run_tui()
 
 
 if __name__ == "__main__":

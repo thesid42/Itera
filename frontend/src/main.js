@@ -1,94 +1,94 @@
 import './style.css';
+import { LiveGraph } from './graph.js';
 
-// DOM Elements
-const goalInput = document.getElementById('goal-input');
-const submitBtn = document.getElementById('submit-btn');
-const heroSection = document.getElementById('hero-section');
-const dynamicContent = document.getElementById('dynamic-content');
-const strategiesView = document.getElementById('strategies-view');
-const terminalView = document.getElementById('terminal-view');
-const resultView = document.getElementById('result-view');
-const cardsContainer = document.getElementById('cards-container');
-const terminalOutput = document.getElementById('terminal-output');
-const terminalTitle = document.getElementById('terminal-title');
-const statusBadge = document.getElementById('status-badge');
-const finalCostList = document.getElementById('final-cost-list');
-const resetBtn = document.getElementById('reset-btn');
+// ── DOM refs ──────────────────────────────────────────────────────────────────
+const goalInput       = document.getElementById('goal-input');
+const submitBtn       = document.getElementById('submit-btn');
+const heroSection     = document.getElementById('hero-section');
+const dynamicContent  = document.getElementById('dynamic-content');
+const loaderView      = document.getElementById('loader-view');
+const loaderMsg       = document.getElementById('loader-msg');
+const strategiesView  = document.getElementById('strategies-view');
+const execPanel       = document.getElementById('exec-panel');
+const terminalPane    = document.getElementById('terminal-pane');
+const resultPane      = document.getElementById('result-pane');
+const cardsContainer  = document.getElementById('cards-container');
+const terminalOutput  = document.getElementById('terminal-output');
+const terminalTitle   = document.getElementById('terminal-title');
+const terminalTab     = document.getElementById('terminal-tab');
+const terminalSpinner = document.getElementById('terminal-spinner');
+const tsLabel         = document.getElementById('ts-label');
+const statusPill      = document.getElementById('status-pill');
+const statusText      = document.getElementById('status-text');
+const finalCostList   = document.getElementById('final-cost-list');
+const resetBtn        = document.getElementById('reset-btn');
+const downloadBtn     = document.getElementById('download-btn');
+const headerProgress  = document.getElementById('header-progress');
+const resultBanner    = document.getElementById('result-banner');
+const bannerIcon      = document.getElementById('banner-icon');
+const resultTitle     = document.getElementById('result-title');
+const resultSubtitle  = document.getElementById('result-subtitle');
+const graphCanvas     = document.getElementById('graph-canvas');
+const graphBadge      = document.getElementById('graph-badge');
+const graphHint       = document.getElementById('graph-hint');
 
-// Mock data
-const strategies = [
-  { id: 1, name: 'Fast & Dirty', desc: 'Maximizes throughput using 384-well format, minimal incubations.', time: 45, tips: 120, tipCost: 21.60, reagents: 1200, reagentCost: 4.80, machine: 45, machineCost: 15.75, total: 42.15, rec: false },
-  { id: 2, name: 'Balanced', desc: 'Optimal cost/time tradeoff using 96-well format and multi-channel pipettes.', time: 80, tips: 96, tipCost: 17.28, reagents: 2400, reagentCost: 9.60, machine: 80, machineCost: 28.00, total: 54.88, rec: true },
-  { id: 3, name: 'Precision', desc: 'Minimizes risk with single-channel transfers and individual tip changes to prevent contamination.', time: 150, tips: 384, tipCost: 69.12, reagents: 2400, reagentCost: 9.60, machine: 150, machineCost: 52.50, total: 131.22, rec: false }
-];
+// ── State ─────────────────────────────────────────────────────────────────────
+let finalCode = '';
+let awaitingSelection = false;
+let graph = null;
+let simAttempt = 0;  // tracks current attempt number for graph nodes
 
+// ── Pipeline ──────────────────────────────────────────────────────────────────
+const PIPE_STEPS = ['idle','market','compile','simulate','verified'];
+
+function setPipeline(active) {
+  document.querySelectorAll('.pipe-step').forEach((el, i) => {
+    const step = PIPE_STEPS[i];
+    const idx  = PIPE_STEPS.indexOf(active);
+    el.classList.remove('pulsing', ...PIPE_STEPS.map(s => `active-${s}`), 'done');
+    if (i < idx) el.classList.add('done');
+    else if (i === idx && active !== 'idle' && active !== 'verified')
+      el.classList.add(`active-${step}`, 'pulsing');
+    else if (active === 'verified' && i === idx)
+      el.classList.add('active-verified');
+  });
+  headerProgress.className = (active !== 'idle' && active !== 'verified')
+    ? 'header-progress running' : 'header-progress';
+}
+
+// ── Status pill ───────────────────────────────────────────────────────────────
 function setStatus(text, type = '') {
-  statusBadge.textContent = text;
-  statusBadge.className = `status-badge ${type}`;
+  statusText.textContent = text;
+  statusPill.className = `status-pill${type ? ' ' + type : ''}`;
 }
 
-function handleSubmission() {
-  if (goalInput.value.trim() === '') return;
-  
-  // Transition UI
-  heroSection.classList.add('minimized');
-  goalInput.blur();
-  
-  setStatus('Querying Market...', 'active');
-  dynamicContent.classList.remove('hidden');
-  
-  // Clear views
+// ── View manager ──────────────────────────────────────────────────────────────
+function showStandalone(id) {
+  // Show loader or strategies — hide exec panel
+  execPanel.classList.add('hidden');
+  loaderView.classList.add('hidden');
   strategiesView.classList.add('hidden');
-  terminalView.classList.add('hidden');
-  resultView.classList.add('hidden');
-  
-  // Mock generation delay
-  setTimeout(() => {
-    renderStrategies();
-    strategiesView.classList.remove('hidden');
-    setStatus('Awaiting Selection');
-  }, 1200);
+  if (id) document.getElementById(id).classList.remove('hidden');
 }
 
-goalInput.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') handleSubmission();
-});
-
-submitBtn.addEventListener('click', handleSubmission);
-
-// Quick links
-document.querySelectorAll('.pill-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    goalInput.value = btn.textContent;
-    handleSubmission();
-  });
-});
-
-function renderStrategies() {
-  cardsContainer.innerHTML = '';
-  strategies.forEach((s) => {
-    const card = document.createElement('div');
-    card.className = 'strategy-card';
-    card.innerHTML = `
-      ${s.rec ? '<div class="tag">RECOMMENDED</div>' : ''}
-      <h3 class="card-title">${s.name}</h3>
-      <p class="card-desc">${s.desc}</p>
-      <div class="card-stats">
-        <div class="stat-row"><span class="stat-label">Duration</span><span class="stat-val">${s.time} min</span></div>
-        <div class="stat-row"><span class="stat-label">Tips</span><span class="stat-val">${s.tips}× ($${s.tipCost.toFixed(2)})</span></div>
-        <div class="stat-row"><span class="stat-label">Reagents</span><span class="stat-val">${s.reagents}µL ($${s.reagentCost.toFixed(2)})</span></div>
-        <div class="total-row stat-row"><span class="stat-label">Estimated Total</span><span class="stat-val">$${s.total.toFixed(2)}</span></div>
-      </div>
-    `;
-    
-    card.addEventListener('click', () => {
-      startCompilation(s);
-    });
-    
-    cardsContainer.appendChild(card);
-  });
+function showExec(pane) {
+  // Show exec panel (graph stays visible); switch left pane
+  loaderView.classList.add('hidden');
+  strategiesView.classList.add('hidden');
+  execPanel.classList.remove('hidden');
+  terminalPane.classList.add('hidden');
+  resultPane.classList.add('hidden');
+  if (pane === 'terminal') terminalPane.classList.remove('hidden');
+  if (pane === 'result')   resultPane.classList.remove('hidden');
 }
 
+// ── Graph badge ───────────────────────────────────────────────────────────────
+function setGraphBadge(text, type) {
+  graphBadge.textContent = text;
+  graphBadge.className = `graph-topbar-badge ${type}`;
+}
+
+// ── Terminal helpers ──────────────────────────────────────────────────────────
 function appendTerm(html) {
   const div = document.createElement('div');
   div.innerHTML = html;
@@ -96,70 +96,302 @@ function appendTerm(html) {
   terminalOutput.scrollTop = terminalOutput.scrollHeight;
 }
 
-function startCompilation(strategy) {
-  strategiesView.classList.add('hidden');
-  terminalView.classList.remove('hidden');
+// ── POST → SSE generator ─────────────────────────────────────────────────────
+async function* sseStream(url, body) {
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  const reader = resp.body.getReader();
+  const dec = new TextDecoder();
+  let buf = '';
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    const lines = buf.split('\n');
+    buf = lines.pop();
+    for (const line of lines) {
+      if (line.startsWith('data: ')) {
+        try { yield JSON.parse(line.slice(6)); } catch (_) {}
+      }
+    }
+  }
+}
+
+// ── Strategy cards ────────────────────────────────────────────────────────────
+function renderStrategies(strategies) {
+  cardsContainer.innerHTML = '';
+  strategies.forEach(s => {
+    const c = s.cost;
+    const card = document.createElement('div');
+    card.className = 'strategy-card';
+    card.innerHTML = `
+      ${s.recommended ? '<div class="tag">Recommended</div>' : ''}
+      <h3 class="card-title">${s.name}</h3>
+      <p class="card-desc">${s.description}</p>
+      <div class="card-stats">
+        <div class="stat-row"><span class="stat-label">Duration</span><span class="stat-val">${s.estimated_duration_min} min</span></div>
+        <div class="stat-row"><span class="stat-label">Tips</span><span class="stat-val">${c.tips.count}× · $${c.tips.usd.toFixed(2)}</span></div>
+        <div class="stat-row"><span class="stat-label">Reagents</span><span class="stat-val">${c.reagents.total_ul.toFixed(0)} µL · $${c.reagents.usd.toFixed(2)}</span></div>
+        <div class="stat-row total-row"><span class="stat-label">Estimated Total</span><span class="stat-val">$${c.total_estimated_usd.toFixed(2)}</span></div>
+      </div>`;
+    card.addEventListener('click', () => {
+      if (!awaitingSelection) return;
+      awaitingSelection = false;
+      startCompilation(s);
+    });
+    cardsContainer.appendChild(card);
+  });
+}
+
+// ── Marketplace ───────────────────────────────────────────────────────────────
+async function handleSubmission() {
+  const goal = goalInput.value.trim();
+  if (!goal) return;
+
+  heroSection.classList.add('minimized');
+  goalInput.disabled = true;
+  submitBtn.disabled = true;
+  goalInput.blur();
+
+  dynamicContent.classList.remove('hidden');
+  showStandalone('loader-view');
+  loaderMsg.textContent = 'Querying marketplace…';
+  setPipeline('market');
+  setStatus('Querying Market', 'active');
+  awaitingSelection = false;
+  finalCode = '';
+
+  try {
+    for await (const evt of sseStream('/api/marketplace', { goal })) {
+      if (evt.type === 'status') {
+        loaderMsg.textContent = evt.data;
+        setStatus(evt.data, 'active');
+      } else if (evt.type === 'strategies') {
+        renderStrategies(evt.data);
+        showStandalone('strategies-view');
+        setPipeline('idle');
+        setStatus('Select a Strategy', 'warning');
+        awaitingSelection = true;
+      } else if (evt.type === 'error') {
+        showStandalone(null);
+        setPipeline('idle');
+        setStatus('Error', 'error');
+      }
+    }
+  } catch (err) {
+    showStandalone(null);
+    setPipeline('idle');
+    setStatus('Connection Error', 'error');
+  } finally {
+    goalInput.disabled = false;
+    submitBtn.disabled = false;
+  }
+}
+
+// ── Compile + Simulate ────────────────────────────────────────────────────────
+async function startCompilation(strategy) {
   terminalOutput.innerHTML = '';
-  
-  setStatus('Compiling...', 'active');
   terminalTitle.textContent = `Compiling: ${strategy.name}`;
-  
-  appendTerm(`<span class="log-info">➔ Generating Opentrons Python API v2 script...</span>`);
-  
-  setTimeout(() => {
-    appendTerm(`from opentrons import protocol_api`);
-    appendTerm(`metadata = {"apiLevel": "2.14"}`);
-    appendTerm(`def run(protocol: protocol_api.ProtocolContext):`);
-    appendTerm(`    plate = protocol.load_labware("corning_96_wellplate_360ul_flat", "1")`);
-    appendTerm(`    tiprack = protocol.load_labware("opentrons_96_tiprack_300ul", "2")`);
-    appendTerm(`    p300 = protocol.load_instrument("p300_multi_gen2", "right", tip_racks=[tiprack])`);
-    
-    setTimeout(() => {
-      runSimulation(strategy);
-    }, 1000);
-  }, 1000);
+  terminalTab.textContent = 'protocol.py';
+  terminalSpinner.classList.remove('hidden');
+  tsLabel.textContent = 'Compiling';
+
+  // Init graph
+  graph = new LiveGraph(graphCanvas);
+  graphHint.classList.remove('hidden');
+  setGraphBadge('Running', 'running');
+
+  graph.addStep('start',   'start',   'Start');
+  graph.setPass('start');
+  graph.addStep('compile', 'compile', 'Compile');
+  graph.setActive('compile');
+
+  showExec('terminal');
+  setPipeline('compile');
+  setStatus('Compiling', 'active');
+  simAttempt = 0;
+
+  appendTerm(`<span class="log-info">➔ Generating Opentrons Python API v2 script…</span>`);
+
+  let codeAccum = '';
+  let recompileMode = false;
+  let recompileNodeId = null;
+
+  try {
+    for await (const evt of sseStream('/api/compile', { strategy })) {
+
+      if (evt.type === 'status') {
+        const isRunning = evt.data.toLowerCase().startsWith('running');
+        if (isRunning) {
+          simAttempt++;
+          const simId = `sim_${simAttempt}`;
+
+          if (simAttempt === 1) {
+            // First run: mark compile done, add simulate node
+            graph.setPass('compile');
+          } else if (recompileNodeId) {
+            // Subsequent: mark recompile done, add new simulate node
+            graph.setPass(recompileNodeId);
+          }
+
+          graph.addStep(simId, 'simulate', `Simulate #${simAttempt}`);
+          graph.setActive(simId);
+
+          setPipeline('simulate');
+          setStatus(`Simulating #${simAttempt}`, 'active');
+          terminalTitle.textContent = `Simulation — Attempt ${simAttempt}`;
+          tsLabel.textContent = `Attempt ${simAttempt}`;
+          setGraphBadge('Running', 'running');
+        }
+        appendTerm(`<span class="log-info">➔ ${evt.data}</span>`);
+
+      } else if (evt.type === 'code') {
+        codeAccum += evt.data;
+        let el = terminalOutput.querySelector('pre.live-code');
+        if (!el) { el = document.createElement('pre'); el.className = 'live-code'; terminalOutput.appendChild(el); }
+        el.textContent = codeAccum;
+        terminalOutput.scrollTop = terminalOutput.scrollHeight;
+
+      } else if (evt.type === 'recompile') {
+        if (!recompileMode) {
+          recompileMode = true;
+          recompileNodeId = `recompile_${simAttempt}`;
+          graph.addStep(recompileNodeId, 'recompile', `Re-compile ${simAttempt}`);
+          graph.setActive(recompileNodeId);
+          setPipeline('compile');
+          setStatus('Re-compiling', 'active');
+          tsLabel.textContent = 'Re-compiling';
+          appendTerm(`<span class="log-info">➔ Re-compiling with fixes…</span>`);
+        }
+        codeAccum += evt.data;
+        let el = terminalOutput.querySelector('pre.recompile-code');
+        if (!el) { el = document.createElement('pre'); el.className = 'recompile-code'; terminalOutput.appendChild(el); }
+        el.textContent = codeAccum;
+        terminalOutput.scrollTop = terminalOutput.scrollHeight;
+
+      } else if (evt.type === 'attempt') {
+        const a = evt.data;
+        const simId = `sim_${simAttempt}`;
+        if (a.passed) {
+          graph.setPass(simId);
+          appendTerm(`<span class="log-success">✓ Attempt ${a.attempt} — PASSED</span>`);
+          setGraphBadge('Passed', 'pass');
+        } else {
+          graph.setFail(simId, { stderr: a.stderr, diff: a.diff });
+          appendTerm(`<span class="log-error">✗ Attempt ${a.attempt} — FAILED</span>`);
+          if (a.stderr) a.stderr.split('\n').slice(0, 6).forEach(l =>
+            appendTerm(`<span class="log-error">&nbsp;&nbsp;${l}</span>`)
+          );
+          if (a.diff) {
+            appendTerm(`<span class="log-info">── diff ──</span>`);
+            a.diff.split('\n').slice(0, 20).forEach(l => {
+              const cls = l.startsWith('+') ? 'log-diff-add' : l.startsWith('-') ? 'log-diff-sub' : 'log-info';
+              appendTerm(`<span class="${cls}">${l}</span>`);
+            });
+          }
+          setGraphBadge('Failed', 'fail');
+          // reset recompile mode so next recompile creates a new node
+          recompileMode = false;
+          recompileNodeId = null;
+        }
+
+      } else if (evt.type === 'result') {
+        finalCode = evt.data.final_code || codeAccum;
+        terminalSpinner.classList.add('hidden');
+
+        // Final graph node
+        const endId = 'end';
+        graph.addStep(endId, 'end', evt.data.success ? 'Verified ✓' : 'Best Effort');
+        graph.setEnd(endId, evt.data.success);
+        setGraphBadge(evt.data.success ? 'Passed' : 'Best Effort', evt.data.success ? 'pass' : 'fail');
+
+        showResult(evt.data);
+
+      } else if (evt.type === 'error') {
+        appendTerm(`<span class="log-error">✗ ${evt.data}</span>`);
+        terminalSpinner.classList.add('hidden');
+        setGraphBadge('Error', 'fail');
+        setPipeline('idle');
+        setStatus('Error', 'error');
+      }
+    }
+  } catch (err) {
+    appendTerm(`<span class="log-error">✗ Connection error: ${err.message}</span>`);
+    terminalSpinner.classList.add('hidden');
+    setGraphBadge('Error', 'fail');
+    setPipeline('idle');
+    setStatus('Error', 'error');
+  }
 }
 
-function runSimulation(strategy) {
-  setStatus('Simulating...', 'active');
-  terminalTitle.textContent = `Running Simulation Loop`;
-  appendTerm(`<br><span class="log-info">➔ Running opentrons_simulate...</span>`);
-  
-  setTimeout(() => {
-    appendTerm(`<span class="log-error">✗ Attempt 1 FAILED</span>`);
-    appendTerm(`<span class="log-error">APIError: time module is deprecated in v2. Use protocol.delay()</span>`);
-    appendTerm(`<br>Diff:`);
-    appendTerm(`<span class="log-diff-sub">- import time</span>`);
-    appendTerm(`<span class="log-diff-sub">- time.sleep(30)</span>`);
-    appendTerm(`<span class="log-diff-add">+ protocol.delay(seconds=30)</span>`);
-    appendTerm(`<br><span class="log-info">➔ Re-compiling...</span>`);
-    
-    setTimeout(() => {
-      appendTerm(`<span class="log-success">✓ Attempt 2 PASSED (Zero errors)</span>`);
-      showResult(strategy);
-    }, 1500);
-  }, 1500);
-}
+// ── Result ────────────────────────────────────────────────────────────────────
+function showResult(r) {
+  const c = r.cost;
+  finalCostList.innerHTML = `
+    <li><span>Tips (${c.tips.count}×)</span><span>$${c.tips.usd.toFixed(2)}</span></li>
+    <li><span>Reagents (${c.reagents.total_ul.toFixed(0)} µL)</span><span>$${c.reagents.usd.toFixed(2)}</span></li>
+    <li><span>Machine Time (${c.machine_time.minutes.toFixed(0)} min)</span><span>$${c.machine_time.usd.toFixed(2)}</span></li>
+    <li><span>Total Estimated</span><span>$${c.total_estimated_usd.toFixed(2)}</span></li>
+  `;
 
-function showResult(strategy) {
-  setTimeout(() => {
-    terminalView.classList.add('hidden');
-    resultView.classList.remove('hidden');
+  if (r.success) {
+    resultBanner.className = 'result-banner';
+    bannerIcon.className = 'banner-icon';
+    bannerIcon.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>`;
+    resultTitle.textContent = 'Protocol Verified';
+    resultSubtitle.textContent = `Zero simulation errors · ${r.total_attempts} attempt(s)`;
+    setPipeline('verified');
     setStatus('Verified', 'success');
-    
-    finalCostList.innerHTML = `
-      <li><span>Tips (${strategy.tips})</span><span>$${strategy.tipCost.toFixed(2)}</span></li>
-      <li><span>Reagents (${strategy.reagents}µL)</span><span>$${strategy.reagentCost.toFixed(2)}</span></li>
-      <li><span>Machine Time (${strategy.machine}m)</span><span>$${strategy.machineCost.toFixed(2)}</span></li>
-      <li><span>Total Cost</span><span>$${strategy.total.toFixed(2)}</span></li>
-    `;
-  }, 1000);
+  } else {
+    resultBanner.className = 'result-banner effort';
+    bannerIcon.className = 'banner-icon effort';
+    bannerIcon.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17v.5"/><path d="M10.3 3.7L2 20h20L13.7 3.7a2 2 0 00-3.4 0z"/></svg>`;
+    resultTitle.textContent = 'Best Effort Result';
+    resultSubtitle.textContent = `Could not fully pass after ${r.total_attempts} attempts`;
+    setPipeline('idle');
+    setStatus('Best Effort', 'warning');
+  }
+
+  showExec('result');
 }
 
+// ── Download ──────────────────────────────────────────────────────────────────
+downloadBtn.addEventListener('click', () => {
+  if (!finalCode) return;
+  const blob = new Blob([finalCode], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'protocol.py'; a.click();
+  URL.revokeObjectURL(url);
+});
+
+// ── Reset ─────────────────────────────────────────────────────────────────────
 resetBtn.addEventListener('click', () => {
   goalInput.value = '';
   heroSection.classList.remove('minimized');
   dynamicContent.classList.add('hidden');
-  resultView.classList.add('hidden');
-  setStatus('Idle');
+  showStandalone(null);
+  execPanel.classList.add('hidden');
+  setPipeline('idle');
+  setStatus('Ready');
+  awaitingSelection = false;
+  finalCode = '';
+  if (graph) { graph.reset(); graph = null; }
+  goalInput.focus();
+});
+
+// ── Floating header on scroll ────────────────────────────────────────────────
+const siteHeader = document.getElementById('site-header');
+const onScroll = () => siteHeader.classList.toggle('scrolled', window.scrollY > 24);
+window.addEventListener('scroll', onScroll, { passive: true });
+
+// ── Input ─────────────────────────────────────────────────────────────────────
+goalInput.addEventListener('keydown', e => { if (e.key === 'Enter') handleSubmission(); });
+submitBtn.addEventListener('click', handleSubmission);
+document.querySelectorAll('.pill-btn').forEach(btn => {
+  btn.addEventListener('click', () => { goalInput.value = btn.textContent; handleSubmission(); });
 });
