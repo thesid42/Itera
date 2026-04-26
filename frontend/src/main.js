@@ -36,7 +36,8 @@ const graphHint       = document.getElementById('graph-hint');
 let finalCode = '';
 let awaitingSelection = false;
 let graph = null;
-let simAttempt = 0;  // tracks current attempt number for graph nodes
+let simAttempt = 0;
+let recompileCount = 0;
 
 // ── Pipeline ──────────────────────────────────────────────────────────────────
 const PIPE_STEPS = ['idle','market','compile','simulate','verified'];
@@ -217,6 +218,7 @@ async function startCompilation(strategy) {
   setPipeline('compile');
   setStatus('Compiling', 'active');
   simAttempt = 0;
+  recompileCount = 0;
 
   appendTerm(`<span class="log-info">➔ Generating Opentrons Python API v2 script…</span>`);
 
@@ -228,26 +230,16 @@ async function startCompilation(strategy) {
     for await (const evt of sseStream('/api/compile', { strategy })) {
 
       if (evt.type === 'status') {
-        const isRunning = evt.data.toLowerCase().startsWith('running');
-        if (isRunning) {
-          simAttempt++;
-          const simId = `sim_${simAttempt}`;
-
-          if (simAttempt === 1) {
-            // First run: mark compile done, add simulate node
-            graph.setPass('compile');
-          } else if (recompileNodeId) {
-            // Subsequent: mark recompile done, add new simulate node
-            graph.setPass(recompileNodeId);
-          }
-
-          graph.addStep(simId, 'simulate', `Simulate #${simAttempt}`);
-          graph.setActive(simId);
-
+        // Backend sends exactly one "Running simulation loop…" event before the loop starts
+        if (evt.data.toLowerCase().startsWith('running')) {
+          graph.setPass('compile');
+          simAttempt = 1;
+          graph.addStep('sim_1', 'simulate', 'Simulate #1');
+          graph.setActive('sim_1');
           setPipeline('simulate');
-          setStatus(`Simulating #${simAttempt}`, 'active');
-          terminalTitle.textContent = `Simulation — Attempt ${simAttempt}`;
-          tsLabel.textContent = `Attempt ${simAttempt}`;
+          setStatus('Simulating #1', 'active');
+          terminalTitle.textContent = 'Simulation — Attempt 1';
+          tsLabel.textContent = 'Attempt 1';
           setGraphBadge('Running', 'running');
         }
         appendTerm(`<span class="log-info">➔ ${evt.data}</span>`);
@@ -262,8 +254,12 @@ async function startCompilation(strategy) {
       } else if (evt.type === 'recompile') {
         if (!recompileMode) {
           recompileMode = true;
-          recompileNodeId = `recompile_${simAttempt}`;
-          graph.addStep(recompileNodeId, 'recompile', `Re-compile ${simAttempt}`);
+          recompileCount++;
+          recompileNodeId = `recompile_${recompileCount}`;
+          codeAccum = '';
+          const oldPre = terminalOutput.querySelector('pre.recompile-code');
+          if (oldPre) oldPre.remove();
+          graph.addStep(recompileNodeId, 'recompile', `Re-compile ${recompileCount}`);
           graph.setActive(recompileNodeId);
           setPipeline('compile');
           setStatus('Re-compiling', 'active');
@@ -278,6 +274,23 @@ async function startCompilation(strategy) {
 
       } else if (evt.type === 'attempt') {
         const a = evt.data;
+
+        // For attempt N>1: the preceding recompile just finished — close it and open new sim node
+        if (a.attempt > 1 && recompileNodeId) {
+          graph.setPass(recompileNodeId);
+          recompileNodeId = null;
+          recompileMode = false;
+          simAttempt = a.attempt;
+          const simId = `sim_${simAttempt}`;
+          graph.addStep(simId, 'simulate', `Simulate #${simAttempt}`);
+          graph.setActive(simId);
+          setPipeline('simulate');
+          setStatus(`Simulating #${simAttempt}`, 'active');
+          terminalTitle.textContent = `Simulation — Attempt ${simAttempt}`;
+          tsLabel.textContent = `Attempt ${simAttempt}`;
+          setGraphBadge('Running', 'running');
+        }
+
         const simId = `sim_${simAttempt}`;
         if (a.passed) {
           graph.setPass(simId);
@@ -297,9 +310,7 @@ async function startCompilation(strategy) {
             });
           }
           setGraphBadge('Failed', 'fail');
-          // reset recompile mode so next recompile creates a new node
           recompileMode = false;
-          recompileNodeId = null;
         }
 
       } else if (evt.type === 'result') {
